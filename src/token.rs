@@ -548,17 +548,18 @@ macro_rules! keywords {
             });
         )+
 
+        #[allow(dead_code)]
         pub fn ident(input: $crate::ParseStream<'_>) -> $crate::Result<$crate::token::Ident> {
             use $crate::token::Ident;
             let ident: Ident = input.parse()?;
             if [$( $kw ),+].contains(&ident.string().as_str()) {
-                $crate::Result::Ok(ident)
-            } else {
                 $crate::Result::Err($crate::error::Error::unexpected_token(
                     ::std::collections::HashSet::from_iter(["an identifier".to_string()]),
                     ident.span().clone(),
                     ::std::rc::Rc::clone(ident.span().source()),
                 ))
+            } else {
+                $crate::Result::Ok(ident)
             }
         }
     };
