@@ -1,32 +1,33 @@
-use super::token::Ident;
-use super::token::Literal;
-use super::TokenStream;
-use super::token::LiteralValue;
-use super::token::SingleCharPunct;
-use super::token::PunctKind;
-use super::token::Spacing;
-use super::TokenTree;
 use super::error::Error;
 use super::error::ErrorKind;
+use super::token::Ident;
+use super::token::Literal;
+use super::token::LiteralValue;
+use super::token::PunctKind;
+use super::token::SingleCharPunct;
+use super::token::Spacing;
 use super::SourceFile;
 use super::Span;
+use super::TokenStream;
+use super::TokenTree;
+
+use std::rc::Rc;
 
 fn valid_ident_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
 #[derive(Debug)]
-struct Scanner<'src> {
+struct Scanner {
     current: usize,
-    errors: Error<'src>,
-    source: &'src SourceFile,
+    end: usize,
+    errors: Error,
+    source: Rc<SourceFile>,
 }
 
-impl<'src> Scanner<'src> {
-    fn scan(mut self) -> (TokenStream<'src>, Option<Error<'src>>) {
+impl Scanner {
+    fn scan(mut self) -> (TokenStream, Option<Error>) {
         let mut tokens = vec![];
-
-        self.skip_whitespace();
 
         while !self.is_at_end() {
             if let Some(token) = self.scan_token() {
@@ -35,9 +36,9 @@ impl<'src> Scanner<'src> {
                 tokens.push(TokenTree::Error(todo!()));
                 break;
             }
-
-            self.skip_whitespace();
         }
+
+        tokens.push(TokenTree::End);
 
         let errors = if self.errors.is_empty() {
             None
@@ -45,15 +46,21 @@ impl<'src> Scanner<'src> {
             Some(self.errors)
         };
 
-        (TokenStream { tokens, location: 0, source_file: self.source }, errors)
+        (
+            TokenStream {
+                tokens,
+                source: self.source,
+            },
+            errors,
+        )
     }
 
-    fn scan_token(&mut self) -> Option<TokenTree<'src>> {
+    fn scan_token(&mut self) -> Option<TokenTree> {
         let token = match self.peek(0)? {
             c if PunctKind::try_from(c).is_ok() => {
                 let kind = c.try_into().unwrap();
                 let spacing = Spacing::from(self.peek(1)?);
-                let span = Span::new(self.current, self.current + 1, self.source);
+                let span = Span::new(self.current, self.current + 1, Rc::clone(&self.source));
                 self.current += 1;
                 TokenTree::Punct(SingleCharPunct {
                     kind,
@@ -77,7 +84,7 @@ impl<'src> Scanner<'src> {
                 };
                 TokenTree::Literal(Literal {
                     value,
-                    span: Span::new(start, self.current, self.source),
+                    span: Span::new(start, self.current, Rc::clone(&self.source)),
                 })
             }
             '"' => {
@@ -94,11 +101,11 @@ impl<'src> Scanner<'src> {
                     self.errors.pop();
                     self.errors.pop();
                     self.errors.add(Error::new(
-                        self.source,
+                        Rc::clone(&self.source),
                         ErrorKind::UnterminatedString(Span::new(
                             open,
                             self.source.contents.len(),
-                            self.source,
+                            Rc::clone(&self.source),
                         )),
                     ));
                     return None;
@@ -108,7 +115,7 @@ impl<'src> Scanner<'src> {
                 self.current += 1;
                 TokenTree::Literal(Literal {
                     value,
-                    span: Span::new(open, self.current, self.source),
+                    span: Span::new(open, self.current, Rc::clone(&self.source)),
                 })
             }
             '\'' => {
@@ -118,13 +125,15 @@ impl<'src> Scanner<'src> {
                     self.source.contents[self.current..].chars().next().unwrap(),
                 );
                 self.current += 1;
-                let span = Span::new(start, self.current + 1, self.source);
+                let span = Span::new(start, self.current + 1, Rc::clone(&self.source));
                 if self.peek(0)? == '\'' {
                     self.current += 1;
                     TokenTree::Literal(Literal { value, span })
                 } else {
-                    self.errors
-                        .add(Error::new(self.source, ErrorKind::UnterminatedChar(span)));
+                    self.errors.add(Error::new(
+                        Rc::clone(&self.source),
+                        ErrorKind::UnterminatedChar(span),
+                    ));
                     TokenTree::Error(todo!())
                 }
             }
@@ -134,26 +143,25 @@ impl<'src> Scanner<'src> {
                     self.current += 1;
                 }
                 let string = &self.source.contents[start..self.current];
-                let span = Span::new(start, self.current, self.source);
-                
-                        let string = if string.starts_with("__lang") {
-                            let mut new_string = String::with_capacity(string.len() + 6);
-                            new_string.push_str("__user");
-                            new_string.push_str(string);
-                            new_string
-                        } else {
-                            string.to_owned()
-                        };
-                        TokenTree::Ident(Ident { string, span })
+                let span = Span::new(start, self.current, Rc::clone(&self.source));
 
+                let string = if string.starts_with("__lang") {
+                    let mut new_string = String::with_capacity(string.len() + 6);
+                    new_string.push_str("__user");
+                    new_string.push_str(string);
+                    new_string
+                } else {
+                    string.to_owned()
+                };
+                TokenTree::Ident(Ident { string, span })
             }
             ')' | ']' | '}' => {
                 self.errors.add(Error::new(
-                    self.source,
+                    Rc::clone(&self.source),
                     ErrorKind::UnopenedDelimiter(Span::new(
                         self.current,
                         self.current + 1,
-                        self.source,
+                        Rc::clone(&self.source),
                     )),
                 ));
                 self.current += 1;
@@ -161,11 +169,11 @@ impl<'src> Scanner<'src> {
             }
             _ => {
                 self.errors.add(Error::new(
-                    self.source,
+                    Rc::clone(&self.source),
                     ErrorKind::UnknownCharacter(Span::new(
                         self.current,
                         self.current + 1,
-                        self.source,
+                        Rc::clone(&self.source),
                     )),
                 ));
                 self.current += 1;
@@ -179,7 +187,7 @@ impl<'src> Scanner<'src> {
     fn peek(&mut self, offset: usize) -> Option<char> {
         if self.current + offset >= self.source.contents.len() {
             self.errors.add(Error::new(
-                self.source,
+                Rc::clone(&self.source),
                 ErrorKind::EndOfFile(self.source.contents.len()),
             ));
             None
@@ -191,29 +199,14 @@ impl<'src> Scanner<'src> {
     }
 
     fn is_at_end(&mut self) -> bool {
-        self.current >= self.source.contents.len()
-    }
-
-    fn skip_whitespace(&mut self) {
-        while !self.is_at_end() {
-            let c = self.peek(0).unwrap();
-            match c {
-                '/' if self.peek(1) == Some('/') => {
-                    self.current += 2;
-                    while self.peek(0) != Some('\n') {
-                        self.current += 1;
-                    }
-                }
-                c if c.is_whitespace() => self.current += 1,
-                _ => break,
-            }
-        }
+        self.current >= self.end
     }
 }
 
-pub(crate) fn scan(source: &SourceFile) -> (TokenStream, Option<Error>) {
+pub(crate) fn scan(source: Rc<SourceFile>) -> (TokenStream, Option<Error>) {
     let (tokens, errors) = Scanner {
         current: 0,
+        end: source.contents.len(),
         errors: Error::empty(),
         source,
     }

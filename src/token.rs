@@ -2,55 +2,61 @@ use crate::error::Error;
 use crate::error::ErrorKind;
 use crate::private::Sealed;
 use crate::Parse;
+use crate::ParseStream;
+use crate::Result;
 use crate::Span;
-use crate::TokenStream;
 use crate::TokenTree;
 
 use std::collections::HashSet;
 use std::fmt;
+use std::rc::Rc;
+use std::result;
 
-pub trait Token<'src>: Parse<'src> + Sealed {}
+pub trait Token: Parse + Sealed {}
 
-pub trait Punct<'src>: Token<'src> {
-    fn display() -> String;
-}
-
-impl<'src, T: Token<'src>> Parse<'src> for Option<T> {
-    fn from_tokens(tokens: &mut TokenStream<'src>) -> Result<Self, Error<'src>> {
-        match tokens.try_parse() {
+impl<T: Token> Parse for Option<T> {
+    fn parse(input: ParseStream) -> Result<Self> {
+        match input.try_parse() {
             Ok(value) => Ok(Some(value)),
             Err(_) => Ok(None),
         }
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Ident<'src> {
-    pub(crate) string: String,
-    pub(crate) span: Span<'src>,
+pub trait Punct: Token {
+    #[doc(hidden)]
+    fn display() -> String;
 }
 
-impl PartialEq for Ident<'_> {
+pub trait WhiteSpace: Punct {}
+
+#[derive(Debug, Clone)]
+pub struct Ident {
+    pub(crate) string: String,
+    pub(crate) span: Span,
+}
+
+impl PartialEq for Ident {
     fn eq(&self, other: &Self) -> bool {
         self.string == other.string
     }
 }
 
-impl<'src> TryFrom<TokenTree<'src>> for Ident<'src> {
-    type Error = ();
+impl TryFrom<TokenTree> for Ident {
+    type Error = TokenTree;
 
-    fn try_from(value: TokenTree<'src>) -> Result<Self, Self::Error> {
+    fn try_from(value: TokenTree) -> result::Result<Self, Self::Error> {
         if let TokenTree::Ident(token) = value {
             Ok(token)
         } else {
-            Err(())
+            Err(value)
         }
     }
 }
 
-impl<'src> Parse<'src> for Ident<'src> {
-    fn from_tokens(tokens: &mut TokenStream<'src>) -> Result<Self, Error<'src>> {
-        if let Ok(ident) = Self::try_from(tokens.next()?.to_owned()) {
+impl Parse for Ident {
+    fn parse(input: ParseStream) -> Result<Self> {
+        if let Ok(ident) = Self::try_from(input.next()?.to_owned()) {
             Ok(ident)
         } else {
             todo!()
@@ -58,27 +64,27 @@ impl<'src> Parse<'src> for Ident<'src> {
     }
 }
 
-impl Sealed for Ident<'_> {}
+impl Sealed for Ident {}
 
-impl<'src> Token<'src> for Ident<'src> {}
+impl Token for Ident {}
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct SingleCharPunct<'src> {
+#[derive(Debug, Clone)]
+pub(crate) struct SingleCharPunct {
     pub(super) kind: PunctKind,
     pub(super) spacing: Spacing,
-    pub(super) span: Span<'src>,
+    pub(super) span: Span,
 }
 
-impl PartialEq for SingleCharPunct<'_> {
+impl PartialEq for SingleCharPunct {
     fn eq(&self, other: &Self) -> bool {
         self.kind == other.kind && self.spacing == other.spacing
     }
 }
 
-impl<'src, 'a> TryFrom<&'a TokenTree<'src>> for &'a SingleCharPunct<'src> {
+impl<'a> TryFrom<&'a TokenTree> for &'a SingleCharPunct {
     type Error = ();
 
-    fn try_from(value: &'a TokenTree<'src>) -> Result<Self, Self::Error> {
+    fn try_from(value: &'a TokenTree) -> result::Result<Self, Self::Error> {
         if let TokenTree::Punct(token) = value {
             Ok(token)
         } else {
@@ -104,25 +110,25 @@ impl From<char> for Spacing {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Literal<'src> {
+pub(crate) struct Literal {
     pub(crate) value: LiteralValue,
-    pub(crate) span: Span<'src>,
+    pub(crate) span: Span,
 }
 
-impl PartialEq for Literal<'_> {
+impl PartialEq for Literal {
     fn eq(&self, other: &Self) -> bool {
         self.value == other.value
     }
 }
 
-impl<'src, 'a> TryFrom<&'a TokenTree<'src>> for &'a Literal<'src> {
-    type Error = ();
+impl<'a> TryFrom<&'a TokenTree> for &'a Literal {
+    type Error = &'a TokenTree;
 
-    fn try_from(value: &'a TokenTree<'src>) -> Result<Self, Self::Error> {
+    fn try_from(value: &'a TokenTree) -> result::Result<Self, Self::Error> {
         if let TokenTree::Literal(token) = value {
             Ok(token)
         } else {
-            Err(())
+            Err(value)
         }
     }
 }
@@ -148,41 +154,41 @@ macro_rules! tokens {
         }
     } => {
         $(
-            #[derive(Debug, Clone, Copy)]
+            #[derive(Debug, Clone)]
             #[doc = $doc1]
-            pub struct $t1<'src>(Span<'src>);
+            pub struct $t1(Span);
 
-            impl<'src> $t1<'src> {
-                pub fn span(&self) -> Span<'src> {
-                    self.0
+            impl $t1 {
+                pub fn span(&self) -> &Span {
+                    &self.0
                 }
             }
 
-            impl<'src> Parse<'src> for $t1<'src> {
-                fn from_tokens(tokens: &mut TokenStream<'src>) -> Result<Self, Error<'src>> {
-                    let token = tokens.next()?.to_owned();
+            impl Parse for $t1 {
+                fn parse(input: ParseStream<'_>) -> Result<Self> {
+                    let token = input.next()?.to_owned();
                     if let TokenTree::Punct(SingleCharPunct { kind: PunctKind::$t1, span, .. }) = token {
                         Ok(Self(span))
                     } else {
-                        Err(Error::new(tokens.source_file, ErrorKind::UnexpectedToken {
+                        Err(Error::new(Rc::clone(&input.source), ErrorKind::UnexpectedToken {
                             expected: HashSet::from_iter(vec![$name1.to_string()]),
-                            span: token.span(),
+                            span: token.span().clone(),
                         }))
                     }
                 }
             }
 
-            impl Sealed for $t1<'_> {}
+            impl Sealed for $t1 {}
 
-            impl<'src> Token<'src> for $t1<'src> {}
+            impl Token for $t1 {}
 
-            impl fmt::Display for $t1<'_> {
+            impl fmt::Display for $t1 {
                 fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                     write!(f, "{}", $name1)
                 }
             }
 
-            impl<'src> Punct<'src> for $t1<'src> {
+            impl Punct for $t1 {
                 fn display() -> String {
                     $name1.to_string()
                 }
@@ -197,7 +203,7 @@ macro_rules! tokens {
         impl TryFrom<char> for PunctKind {
             type Error = char;
 
-            fn try_from(value: char) -> Result<Self, Self::Error> {
+            fn try_from(value: char) -> result::Result<Self, Self::Error> {
                 match value {
                     $( $name1 => Ok(PunctKind::$t1), )+
                     _ => Err(value),
@@ -206,51 +212,51 @@ macro_rules! tokens {
         }
 
         $(
-            #[derive(Debug, Clone, Copy)]
+            #[derive(Debug, Clone)]
             #[doc = $doc2]
-            pub struct $t2<'src>(Span<'src>);
+            pub struct $t2(Span);
 
-            impl<'src> $t2<'src> {
-                pub fn span(&self) -> Span<'src> {
-                    self.0
+            impl $t2 {
+                pub fn span(&self) -> &Span {
+                    &self.0
                 }
 
-                fn from_tokens_impl(tokens: &mut TokenStream<'src>) -> Result<Self, Error<'src>> {
-                    if let TokenTree::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = tokens.peek(0)? {
+                fn from_tokens_impl(input: ParseStream<'_>) -> Result<Self> {
+                    if let TokenTree::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()? {
 
                     } else {
                         return Err(Error::empty());
                     }
 
-                    let start: $t21 = tokens.parse()?;
-                    let end: $t22 = tokens.parse()?;
+                    let start: $t21 = input.parse()?;
+                    let end: $t22 = input.parse()?;
                     Ok(Self(Span::new(start.0.start, end.0.end, start.0.source)))
                 }
             }
 
-            impl<'src> Parse<'src> for $t2<'src> {
-                fn from_tokens(tokens: &mut TokenStream<'src>) -> Result<Self, Error<'src>> {
-                    let span = tokens.peek(0)?.span();
-                    Self::from_tokens_impl(tokens).map_err(|_| {
-                        Error::new(tokens.source_file, ErrorKind::UnexpectedToken {
+            impl Parse for $t2 {
+                fn parse(input: ParseStream<'_>) -> Result<Self> {
+                    let span = input.current()?.span();
+                    Self::from_tokens_impl(input).map_err(|_| {
+                        Error::new(Rc::clone(&input.source), ErrorKind::UnexpectedToken {
                             expected: HashSet::from_iter(vec![$name2.to_string()]),
-                            span,
+                            span: span.clone(),
                         })
                     })
                 }
             }
 
-            impl Sealed for $t2<'_> {}
+            impl Sealed for $t2 {}
 
-            impl<'src> Token<'src> for $t2<'src> {}
+            impl Token for $t2 {}
 
-            impl fmt::Display for $t2<'_> {
+            impl fmt::Display for $t2 {
                 fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                     write!(f, $name2)
                 }
             }
 
-            impl<'src> Punct<'src> for $t2<'src> {
+            impl Punct for $t2 {
                 fn display() -> String {
                     $name2.to_string()
                 }
@@ -258,56 +264,56 @@ macro_rules! tokens {
         )+
 
         $(
-            #[derive(Debug, Clone, Copy)]
+            #[derive(Debug, Clone)]
             #[doc = $doc3]
-            pub struct $t3<'src>(Span<'src>);
+            pub struct $t3(Span);
 
-            impl<'src> $t3<'src> {
-                pub fn span(&self) -> Span<'src> {
-                    self.0
+            impl $t3 {
+                pub fn span(&self) -> &Span {
+                    &self.0
                 }
 
-                fn from_tokens_impl(tokens: &mut TokenStream<'src>) -> Result<Self, Error<'src>> {
-                    if let TokenTree::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = tokens.peek(0)? {
+                fn from_tokens_impl(input: ParseStream<'_>) -> Result<Self> {
+                    if let TokenTree::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()? {
 
                     } else {
                         return Err(Error::empty());
                     }
-                    if let TokenTree::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = tokens.peek(1)? {
+                    if let TokenTree::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()? {
 
                     } else {
                         return Err(Error::empty());
                     }
-                    let p1: $t31 = tokens.parse()?;
-                    let _p2: $t32 = tokens.parse()?;
-                    let p3: $t33 = tokens.parse()?;
+                    let p1: $t31 = input.parse()?;
+                    let _p2: $t32 = input.parse()?;
+                    let p3: $t33 = input.parse()?;
                     Ok(Self(Span::new(p1.0.start, p3.0.end, p1.0.source)))
                 }
             }
 
-            impl<'src> Parse<'src> for $t3<'src> {
-                fn from_tokens(tokens: &mut TokenStream<'src>) -> Result<Self, Error<'src>> {
-                    let span = tokens.peek(0)?.span();
-                    Self::from_tokens_impl(tokens).map_err(|_| {
-                        Error::new(tokens.source_file, ErrorKind::UnexpectedToken {
+            impl Parse for $t3 {
+                fn parse(input: ParseStream<'_>) -> Result<Self> {
+                    let span = input.current()?.span();
+                    Self::from_tokens_impl(input).map_err(|_| {
+                        Error::new(Rc::clone(&input.source), ErrorKind::UnexpectedToken {
                             expected: HashSet::from_iter(vec![$name3.to_string()]),
-                            span,
+                            span: span.clone(),
                         })
                     })
                 }
             }
 
-            impl Sealed for $t3<'_> {}
+            impl Sealed for $t3 {}
 
-            impl<'src> Token<'src> for $t3<'src> {}
+            impl Token for $t3 {}
 
-            impl fmt::Display for $t3<'_> {
+            impl fmt::Display for $t3 {
                 fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                     write!(f, $name3)
                 }
             }
 
-            impl<'src> Punct<'src> for $t3<'src> {
+            impl Punct for $t3 {
                 fn display() -> String {
                     $name3.to_string()
                 }
@@ -382,93 +388,97 @@ tokens! {
     }
 }
 
-fn parse_joint_impl<'src, T1: Punct<'src>, T2: Punct<'src>>(
-    tokens: &mut TokenStream<'src>,
-) -> Result<(T1, T2), Error<'src>> {
-    let t1 = tokens.parse()?;
+impl WhiteSpace for Space {}
+
+fn parse_joint_impl<T1: Punct, T2: Punct>(input: ParseStream<'_>) -> Result<(T1, T2)> {
+    let t1 = input.parse()?;
     if let TokenTree::Punct(SingleCharPunct {
         spacing: Spacing::Joint,
         ..
-    }) = tokens.peek(-1)?
+    }) = input.get(-1)?
     {
     } else {
         return Err(Error::empty());
     }
-    let t2 = tokens.parse()?;
+    let t2 = input.parse()?;
     Ok((t1, t2))
 }
 
-impl<'src, T1: Punct<'src>, T2: Punct<'src>> Parse<'src> for (T1, T2) {
-    fn from_tokens(tokens: &mut TokenStream<'src>) -> Result<Self, Error<'src>> {
-        let span = tokens.peek(0)?.span();
-        parse_joint_impl(tokens).map_err(|_| {
+impl<T1: Punct, T2: Punct> Parse for (T1, T2) {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
+        let span = input.current()?.span();
+        parse_joint_impl(input).map_err(|_| {
             Error::new(
-                tokens.source_file,
+                Rc::clone(&input.source),
                 ErrorKind::UnexpectedToken {
                     expected: HashSet::from_iter(vec![<(T1, T2)>::display()]),
-                    span,
+                    span: span.clone(),
                 },
             )
         })
     }
 }
 
-impl<'src, T1: Punct<'src>, T2: Punct<'src>> Sealed for (T1, T2) {}
+impl<T1: Punct, T2: Punct> Sealed for (T1, T2) {}
 
-impl<'src, T1: Punct<'src>, T2: Punct<'src>> Token<'src> for (T1, T2) {}
+impl<T1: Punct, T2: Punct> Token for (T1, T2) {}
 
-impl<'src, T1: Punct<'src>, T2: Punct<'src>> Punct<'src> for (T1, T2) {
+impl<T1: Punct, T2: Punct> Punct for (T1, T2) {
     fn display() -> String {
         T1::display() + &T2::display()
     }
 }
 
 /// `  `
-#[derive(Debug, Clone, Copy)]
-pub struct Tab2<'src>(Span<'src>);
+#[derive(Debug, Clone)]
+pub struct Space2(Span);
 
-impl<'src> Parse<'src> for Tab2<'src> {
-    fn from_tokens(tokens: &mut TokenStream<'src>) -> Result<Self, Error<'src>> {
-        let (s1, s2): (Space, Space) = tokens.parse()?;
-        Ok(Tab2(Span::new(
+impl Parse for Space2 {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let (s1, s2): (Space, Space) = input.parse()?;
+        Ok(Space2(Span::new(
             s1.span().start,
             s2.span().end,
-            tokens.source_file,
+            Rc::clone(&input.source),
         )))
     }
 }
 
-impl Sealed for Tab2<'_> {} 
+impl Sealed for Space2 {}
 
-impl<'src> Token<'src> for Tab2<'src> {}
+impl Token for Space2 {}
 
-impl<'src> Punct<'src> for Tab2<'src> {
+impl Punct for Space2 {
     fn display() -> String {
         "  ".to_string()
     }
 }
 
-/// `    `
-#[derive(Debug, Clone, Copy)]
-pub struct Tab4<'src>(Span<'src>);
+impl WhiteSpace for Space2 {}
 
-impl<'src> Parse<'src> for Tab4<'src> {
-    fn from_tokens(tokens: &mut TokenStream<'src>) -> Result<Self, Error<'src>> {
-        let (s1, s2): (Tab2, Tab2) = tokens.parse()?;
-        Ok(Tab4(Span::new(
+/// `    `
+#[derive(Debug, Clone)]
+pub struct Space4(Span);
+
+impl Parse for Space4 {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let (s1, s2): (Space2, Space2) = input.parse()?;
+        Ok(Space4(Span::new(
             s1.0.start,
             s2.0.end,
-            tokens.source_file,
+            Rc::clone(&input.source),
         )))
     }
 }
 
-impl Sealed for Tab4<'_> {} 
+impl Sealed for Space4 {}
 
-impl<'src> Token<'src> for Tab4<'src> {}
+impl Token for Space4 {}
 
-impl<'src> Punct<'src> for Tab4<'src> {
+impl Punct for Space4 {
     fn display() -> String {
         "    ".to_string()
     }
 }
+
+impl WhiteSpace for Space4 {}

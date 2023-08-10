@@ -1,14 +1,19 @@
 use crate::error::Error;
-use crate::error::SingleError;
 use crate::error::ErrorKind;
+use crate::error::SingleError;
 use crate::SourceFile;
 use crate::Span;
 
-use std::io::{self, Write};
+use std::io;
+use std::io::Write;
+use std::rc::Rc;
 
-use ariadne::{ColorGenerator, Label, ReportKind, Source, Color};
+use ariadne::Color;
+use ariadne::Label;
+use ariadne::ReportKind;
+use ariadne::Source;
 
-impl ariadne::Span for Span<'_> {
+impl ariadne::Span for Span {
     type SourceId = String;
 
     fn source(&self) -> &Self::SourceId {
@@ -24,7 +29,7 @@ impl ariadne::Span for Span<'_> {
     }
 }
 
-impl From<&ErrorKind<'_>> for ReportKind<'_> {
+impl From<&ErrorKind> for ReportKind<'static> {
     fn from(value: &ErrorKind) -> Self {
         match value {
             ErrorKind::UnknownCharacter(_)
@@ -37,12 +42,16 @@ impl From<&ErrorKind<'_>> for ReportKind<'_> {
     }
 }
 
-pub struct Report<'src> {
-    report: ariadne::Report<'static, Span<'src>>,
-    source: &'src SourceFile,
+/// A wrapper for [`ariadne::Report`].
+///
+/// A `Vec<Report>` can be created from an [`Error`], but in many cases, the
+/// [`Error::eprint`] method will suffice.
+pub struct Report {
+    report: ariadne::Report<'static, Span>,
+    source: Rc<SourceFile>,
 }
 
-impl Report<'_> {
+impl Report {
     pub fn write<W: Write>(&self, w: W) -> io::Result<()> {
         self.report.write(
             (
@@ -78,50 +87,54 @@ impl Report<'_> {
     }
 }
 
-impl<'src> From<&SingleError<'src>> for Report<'src> {
-    fn from(value: &SingleError<'src>) -> Self {
+impl From<&SingleError> for Report {
+    fn from(value: &SingleError) -> Self {
         let mut builder =
             ariadne::Report::build((&value.kind).into(), value.source.id(), value.kind.start())
                 .with_code(value.kind.discriminant());
         match &value.kind {
             ErrorKind::UnknownCharacter(span) => {
                 builder.set_message("Unknown character");
-                builder.add_label(Label::new(*span).with_color(Color::Red));
+                builder.add_label(Label::new(span.clone()).with_color(Color::Red));
             }
             ErrorKind::UnterminatedChar(span) => {
                 builder.set_message("Expect \"'\" after character literal");
-                builder.add_label(Label::new(*span).with_color(Color::Red));
+                builder.add_label(Label::new(span.clone()).with_color(Color::Red));
             }
             ErrorKind::UnexpectedToken { expected, span } => {}
             ErrorKind::EndOfFile(_) => builder.set_message("Unexpected end of file while parsing"),
             ErrorKind::UnterminatedString(span) => {
                 builder.set_message("Expect '\"' at end of string literal");
-                builder.add_label(Label::new(*span).with_color(Color::Red));
+                builder.add_label(Label::new(span.clone()).with_color(Color::Red));
             }
             ErrorKind::UnopenedDelimiter(span) => {
                 builder.set_message("Unmatched delimiter");
-                builder.add_label(Label::new(*span).with_color(Color::Red));
+                builder.add_label(Label::new(span.clone()).with_color(Color::Red));
             }
         }
         Report {
             report: builder.finish(),
-            source: value.source,
+            source: Rc::clone(&value.source),
         }
     }
 }
 
-impl<'src> From<&Error<'src>> for Vec<Report<'src>> {
-    fn from(value: &Error<'src>) -> Self {
-        value.errors.iter().map(|e| Report::from(e)).collect()
+impl From<&Error> for Vec<Report> {
+    fn from(value: &Error) -> Self {
+        value.errors.iter().map(Report::from).collect()
     }
 }
 
-impl Error<'_> {
-    pub fn report(&self) -> io::Result<()> {
+impl Error {
+    pub fn eprint(&self) -> io::Result<()> {
         let reports: Vec<Report> = self.into();
         for report in reports {
             report.eprint()?;
         }
         Ok(())
+    }
+
+    pub fn report(&self) -> Vec<Report> {
+        self.into()
     }
 }

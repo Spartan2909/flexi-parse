@@ -2,27 +2,34 @@
 #![warn(clippy::semicolon_if_nothing_returned)]
 #![warn(clippy::semicolon_outside_block)]
 #![warn(clippy::significant_drop_tightening)]
-#![warn(clippy::std_instead_of_core)]
-#![warn(clippy::std_instead_of_core)]
 #![forbid(clippy::dbg_macro)]
 #![forbid(unsafe_op_in_unsafe_fn)]
 #![forbid(clippy::multiple_unsafe_ops_per_block)]
 #![forbid(clippy::todo)]
 #![forbid(clippy::undocumented_unsafe_blocks)]
 
-use std::collections::HashSet;
+use std::cell::Cell;
 use std::fs;
 use std::io;
+use std::marker::PhantomData;
+use std::mem;
 use std::path::PathBuf;
+use std::rc::Rc;
+use std::result;
 
 pub mod error;
-pub mod token;
 mod scanner;
+pub mod token;
 use error::Error;
 use error::ErrorKind;
 use token::Ident;
 use token::Literal;
+use token::PunctKind;
 use token::SingleCharPunct;
+use token::Token;
+
+#[cfg(any(feature = "proc-macro", feature = "proc-macro2"))]
+mod proc_macro;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SourceFile {
@@ -50,7 +57,11 @@ impl SourceFile {
     }
 
     pub fn new(name: String, contents: String) -> SourceFile {
-        SourceFile { name, path: None, contents }
+        SourceFile {
+            name,
+            path: None,
+            contents,
+        }
     }
 
     fn id(&self) -> &String {
@@ -58,133 +69,295 @@ impl SourceFile {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Span<'src> {
+/// A region of source code.
+///
+/// Note that unlike [`proc_macro::Span`], this struct contains a reference to
+/// the file containing it.
+///
+/// [`proc_macro::Span`]: https://doc.rust-lang.org/stable/proc_macro/struct.Span.html
+#[derive(Debug, Clone, PartialEq)]
+pub struct Span {
     start: usize,
     end: usize,
-    source: &'src SourceFile,
+    source: Rc<SourceFile>,
 }
 
-impl<'src> Span<'src> {
-    fn new(start: usize, end: usize, source: &'src SourceFile) -> Span<'src> {
+impl Span {
+    fn new(start: usize, end: usize, source: Rc<SourceFile>) -> Span {
         Span { start, end, source }
     }
 }
 
-pub trait Parse<'src>: Sized {
-    fn from_tokens(tokens: &mut TokenStream<'src>) -> Result<Self, Error<'src>>;
+pub trait Parse: Sized {
+    fn parse(input: ParseStream<'_>) -> Result<Self>;
+}
+
+pub trait Parser: Sized {
+    type Output;
+
+    fn parse(self, tokens: TokenStream) -> Result<Self::Output>;
+}
+
+impl<F, T> Parser for F
+where
+    F: FnOnce(ParseStream<'_>) -> Result<T>,
+{
+    type Output = T;
+
+    fn parse(self, tokens: TokenStream) -> Result<T> {
+        let cursor = Cursor {
+            start: &tokens.tokens[0],
+            ptr: &tokens.tokens[0],
+            end: tokens.tokens.last().unwrap(),
+            _marker: PhantomData,
+        };
+        let parse_buffer = ParseBuffer::new(cursor, tokens.source);
+        self(&parse_buffer)
+    }
+}
+
+pub fn parse<T: Parse>(tokens: TokenStream) -> Result<T> {
+    Parser::parse(T::parse, tokens)
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TokenStream<'src> {
-    tokens: Vec<TokenTree<'src>>,
-    location: usize,
-    source_file: &'src SourceFile,
+pub struct TokenStream {
+    tokens: Vec<TokenTree>,
+    source: Rc<SourceFile>,
 }
 
-impl<'src> TokenStream<'src> {
-    pub fn new(source_file: &'src SourceFile) -> (TokenStream<'src>, Option<Error<'src>>) {
-        source_file.into()
+impl TokenStream {
+    fn filter<F: FnMut(&TokenStream) -> Vec<usize>>(&mut self, mut function: F) {
+        let mut indices = function(self);
+        indices.sort_unstable();
+        indices.reverse();
+        for index in indices {
+            self.tokens.remove(index);
+        }
     }
 
-    pub fn parse<T: Parse<'src>>(&mut self) -> Result<T, Error<'src>> {
-        T::from_tokens(self)
+    pub fn skip_whitespace(&mut self) {
+        self.filter(|tokens| {
+            let mut indices = vec![];
+            for (index, token) in tokens.tokens.iter().enumerate() {
+                if matches!(
+                    token,
+                    TokenTree::Punct(SingleCharPunct {
+                        kind: PunctKind::Space,
+                        ..
+                    })
+                ) {
+                    indices.push(index);
+                }
+            }
+            indices
+        });
+    }
+}
+
+/// A cursor position within a token stream.
+///
+/// This struct is unstable, and should only be used through the stable alias
+/// [`ParseStream`].
+pub struct ParseBuffer<'a> {
+    // Instead of Cell<Cursor<'a>> so that ParseBuffer<'a> is covariant in 'a.
+    cursor: Cell<Cursor<'static>>,
+    source: Rc<SourceFile>,
+    _marker: PhantomData<Cursor<'a>>,
+}
+
+impl<'a> ParseBuffer<'a> {
+    fn new(cursor: Cursor<'a>, source: Rc<SourceFile>) -> ParseBuffer<'a> {
+        ParseBuffer {
+            // SAFETY: See comment on struct field.
+            cursor: Cell::new(unsafe { mem::transmute::<Cursor<'a>, Cursor<'static>>(cursor) }),
+            source,
+            _marker: PhantomData,
+        }
     }
 
-    fn try_parse<T: Parse<'src>>(&mut self) -> Result<T, Error<'src>> {
-        let start = self.location;
-        self.parse().map_err(|err| {
-            self.location = start;
+    pub fn parse<T: Parse>(&self) -> Result<T> {
+        T::parse(self)
+    }
+
+    pub fn call<T, F: FnOnce(ParseStream<'_>) -> Result<T>>(&self, function: F) -> Result<T> {
+        function(self)
+    }
+
+    fn try_parse<T: Parse>(&self) -> Result<T> {
+        let cursor = self.cursor.get();
+        T::parse(self).map_err(move |err| {
+            self.cursor.set(cursor);
             err
         })
     }
 
-    fn peek(&self, offset: isize) -> Result<&TokenTree<'src>, Error<'src>> {
-        if let Some(token) = self.tokens.get((self.location as isize + offset) as usize) {
-            Ok(token)
-        } else {
+    pub fn peek<T: Token>(&self) -> bool {
+        self.try_parse::<T>().is_ok()
+    }
+
+    fn parse_undo<T: Parse>(&self) -> bool {
+        let cursor = self.cursor.get();
+        let exists = T::parse(self).is_ok();
+        self.cursor.set(cursor);
+        exists
+    }
+
+    fn next(&self) -> Result<&TokenTree> {
+        if self.cursor.get().eof() {
             Err(Error::new(
-                self.source_file,
-                ErrorKind::EndOfFile(self.source_file.contents.len()),
+                Rc::clone(&self.source),
+                ErrorKind::EndOfFile(self.source.contents.len()),
             ))
+        } else {
+            let (token, cursor) = self.cursor.get().next();
+            self.cursor.set(cursor);
+            Ok(token)
         }
     }
 
-    fn next(&mut self) -> Result<&TokenTree<'src>, Error<'src>> {
-        if let Some(token) = self.tokens.get(self.location) {
-            self.location += 1;
-            Ok(token)
-        } else {
+    fn current(&self) -> Result<&'a TokenTree> {
+        if self.cursor.get().eof() {
             Err(Error::new(
-                self.source_file,
-                ErrorKind::EndOfFile(self.source_file.contents.len()),
+                Rc::clone(&self.source),
+                ErrorKind::EndOfFile(self.source.contents.len()),
             ))
+        } else {
+            Ok(self.cursor.get().current())
         }
     }
 
-    pub fn span(&self, start: Span<'_>, end: Span<'_>) -> Span<'src> {
-        Span::new(start.start, end.end, self.source_file)
-    }
-
-    pub fn error<I: IntoIterator<Item = T>, T: Into<String>>(
-        &self,
-        expected: I,
-        span: Span<'src>,
-    ) -> Error<'src> {
-        Error::new(
-            self.source_file,
-            ErrorKind::UnexpectedToken {
-                expected: HashSet::from_iter(expected.into_iter().map(|t| t.into())),
-                span,
-            },
-        )
+    fn get(&self, offset: isize) -> Result<&'a TokenTree> {
+        self.cursor.get().get(offset).ok_or(Error::new(
+            Rc::clone(&self.source),
+            ErrorKind::EndOfFile(self.source.contents.len()),
+        ))
     }
 }
 
-impl<'src> From<&'src SourceFile> for (TokenStream<'src>, Option<Error<'src>>) {
-    fn from(value: &'src SourceFile) -> Self {
-        scanner::scan(value)
+/// The input type for all parsing functions. This is a stable alias for
+/// [`ParseBuffer`].
+pub type ParseStream<'a> = &'a ParseBuffer<'a>;
+
+#[derive(Debug, Clone, Copy)]
+struct Cursor<'a> {
+    start: *const TokenTree,
+    ptr: *const TokenTree,
+    end: *const TokenTree,
+    _marker: PhantomData<&'a TokenTree>,
+}
+
+impl<'a> Cursor<'a> {
+    /// # Safety
+    /// Must not be at the end of the buffer.
+    unsafe fn bump(self) -> Cursor<'a> {
+        if self.ptr == self.end {
+            self
+        } else {
+            // SAFETY: Must be upheld by caller.
+            let ptr = unsafe { self.ptr.add(1) };
+            Cursor {
+                start: self.start,
+                ptr,
+                end: self.end,
+                _marker: PhantomData,
+            }
+        }
+    }
+
+    fn current(self) -> &'a TokenTree {
+        // SAFETY: `ptr` is valid for 'a.
+        unsafe { &*self.ptr }
+    }
+
+    pub fn eof(self) -> bool {
+        self.ptr == self.end
+    }
+
+    fn next(self) -> (&'a TokenTree, Cursor<'a>) {
+        // SAFETY: `ptr` is valid for 'a.
+        let token_tree = unsafe { &*self.ptr };
+        // SAFETY: Guaranteed by condition.
+        let cursor = unsafe { self.bump() };
+        (token_tree, cursor)
+    }
+
+    fn get(self, offset: isize) -> Option<&'a TokenTree> {
+        let ptr = self.ptr as isize + offset;
+        if self.start as isize <= ptr && self.end as isize > ptr {
+            // SAFETY: `ptr` is live for 'a and is guaranteed by condition
+            // to be valid.
+            Some(unsafe { &*(ptr as *const TokenTree) })
+        } else {
+            None
+        }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum TokenTree<'src> {
-    Error(Span<'src>),
-    Ident(Ident<'src>),
-    Punct(SingleCharPunct<'src>),
-    Literal(Literal<'src>),
+enum TokenTree {
+    Error(Span),
+    Ident(Ident),
+    Punct(SingleCharPunct),
+    Literal(Literal),
     End,
 }
 
-impl<'src> TokenTree<'src> {
-    /*fn span(&self) -> Span<'src> {
+impl TokenTree {
+    fn span(&self) -> &Span {
         match self {
-            TokenTree::Error(span) => *span,
-            TokenTree::Ident(ident) => ident.span,
-            TokenTree::Punct(punct) => punct.span,
-            TokenTree::Literal(literal) => literal.span,
+            TokenTree::Error(span) => span,
+            TokenTree::Ident(ident) => &ident.span,
+            TokenTree::Punct(punct) => &punct.span,
+            TokenTree::Literal(literal) => &literal.span,
+            TokenTree::End => panic!("called `span` on `TokenTree::End`"),
         }
-    }*/
+    }
+
+    fn is_whitespace(&self) -> bool {
+        if let TokenTree::Punct(punct) = self {
+            if punct.kind == PunctKind::Space {
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    fn set_span(&mut self, span: Span) {
+        match self {
+            TokenTree::Error(current_span) => *current_span = span,
+            TokenTree::Ident(ident) => ident.span = span,
+            TokenTree::Punct(punct) => punct.span = span,
+            TokenTree::Literal(literal) => literal.span = span,
+            TokenTree::End => {}
+        }
+    }
 }
 
-impl<'src> From<Ident<'src>> for TokenTree<'src> {
-    fn from(value: Ident<'src>) -> Self {
+impl From<Ident> for TokenTree {
+    fn from(value: Ident) -> Self {
         Self::Ident(value)
     }
 }
 
-impl<'src> From<SingleCharPunct<'src>> for TokenTree<'src> {
-    fn from(value: SingleCharPunct<'src>) -> Self {
+impl From<SingleCharPunct> for TokenTree {
+    fn from(value: SingleCharPunct) -> Self {
         Self::Punct(value)
     }
 }
 
-impl<'src> From<Literal<'src>> for TokenTree<'src> {
-    fn from(value: Literal<'src>) -> Self {
+impl From<Literal> for TokenTree {
+    fn from(value: Literal) -> Self {
         Self::Literal(value)
     }
 }
 
+pub type Result<T> = result::Result<T, Error>;
+
 mod private {
     pub trait Sealed {}
 }
+use private::Sealed;
