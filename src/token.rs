@@ -20,6 +20,9 @@ pub use concat_idents::concat_idents;
 pub trait Token: Parse + Sealed {
     #[doc(hidden)]
     fn span(&self) -> &Span;
+
+    #[doc(hidden)]
+    fn set_span(&mut self, span: Span);
 }
 
 impl<T: Token> Parse for Option<T> {
@@ -184,6 +187,10 @@ impl Token for Ident {
     fn span(&self) -> &Span {
         &self.span
     }
+
+    fn set_span(&mut self, span: Span) {
+        self.span = span;
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -301,6 +308,10 @@ impl Token for LitInt {
     fn span(&self) -> &Span {
         &self.span
     }
+
+    fn set_span(&mut self, span: Span) {
+        self.span = span;
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -343,6 +354,10 @@ impl Token for LitFloat {
     fn span(&self) -> &Span {
         &self.span
     }
+
+    fn set_span(&mut self, span: Span) {
+        self.span = span
+    }
 }
 
 macro_rules! tokens {
@@ -381,6 +396,10 @@ macro_rules! tokens {
             impl Token for $t1 {
                 fn span(&self) -> &Span {
                     &self.0
+                }
+
+                fn set_span(&mut self, span: Span) {
+                    self.0 = span;
                 }
             }
 
@@ -454,6 +473,10 @@ macro_rules! tokens {
                 fn span(&self) -> &Span {
                     &self.0
                 }
+
+                fn set_span(&mut self, span: Span) {
+                    self.0 = span;
+                }
             }
 
             impl fmt::Display for $t2 {
@@ -514,6 +537,10 @@ macro_rules! tokens {
             impl Token for $t3 {
                 fn span(&self) -> &Span {
                     &self.0
+                }
+
+                fn set_span(&mut self, span: Span) {
+                    self.0 = span;
                 }
             }
 
@@ -616,6 +643,10 @@ impl<T: Punct> Token for (T,) {
     fn span(&self) -> &Span {
         self.0.span()
     }
+
+    fn set_span(&mut self, span: Span) {
+        self.0.set_span(span);
+    }
 }
 
 impl<T: Punct> Punct for (T,) {
@@ -641,7 +672,7 @@ fn parse_joint_impl<T1: Punct, T2: Punct>(input: ParseStream<'_>) -> Result<(T1,
 impl<T1: Punct, T2: Punct> Parse for (T1, T2) {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let span = input.current()?.span();
-        let mut tuple = parse_joint_impl(input).map_err(|_| {
+        let mut tuple: (T1, T2) = parse_joint_impl(input).map_err(|_| {
             Error::new(
                 Rc::clone(&input.source),
                 ErrorKind::UnexpectedToken {
@@ -650,7 +681,7 @@ impl<T1: Punct, T2: Punct> Parse for (T1, T2) {
                 },
             )
         })?;
-        // Set tuple.0 span
+        tuple.0.set_span(span.clone());
         Ok(tuple)
     }
 }
@@ -660,6 +691,10 @@ impl<T1: Punct, T2: Punct> Sealed for (T1, T2) {}
 impl<T1: Punct, T2: Punct> Token for (T1, T2) {
     fn span(&self) -> &Span {
         self.0.span()
+    }
+
+    fn set_span(&mut self, span: Span) {
+        self.0.set_span(span);
     }
 }
 
@@ -689,6 +724,10 @@ impl Sealed for Space2 {}
 impl Token for Space2 {
     fn span(&self) -> &Span {
         &self.0
+    }
+
+    fn set_span(&mut self, span: Span) {
+        self.0 = span;
     }
 }
 
@@ -720,6 +759,10 @@ impl Sealed for Space4 {}
 impl Token for Space4 {
     fn span(&self) -> &Span {
         &self.0
+    }
+
+    fn set_span(&mut self, span: Span) {
+        self.0 = span;
     }
 }
 
@@ -776,6 +819,10 @@ macro_rules! keywords {
                 impl $crate::token::Token for struct_name {
                     fn span(&self) -> &$crate::Span {
                         &self.0
+                    }
+
+                    fn set_span(&mut self, span: $crate::Span) {
+                        self.0 = span;
                     }
                 }
             });
