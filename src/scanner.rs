@@ -46,8 +46,6 @@ impl Scanner {
 
         tokens.push(TokenTree::End);
 
-        dbg!(&tokens);
-
         let errors = if self.errors.is_empty() {
             None
         } else {
@@ -184,7 +182,7 @@ impl Scanner {
     }
 
     fn is_at_end(&mut self) -> bool {
-        dbg!(self.current) >= dbg!(self.end)
+        self.current >= self.end
     }
 }
 
