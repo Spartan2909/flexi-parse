@@ -13,8 +13,12 @@ use super::TokenTree;
 
 use std::rc::Rc;
 
-fn valid_ident_char(c: char) -> bool {
-    c.is_alphanumeric() || c == '_'
+fn valid_ident_char(c: Option<char>) -> bool {
+    if let Some(c) = c {
+        c.is_alphanumeric() || c == '_'
+    } else {
+        false
+    }
 }
 
 #[derive(Debug)]
@@ -30,15 +34,19 @@ impl Scanner {
         let mut tokens = vec![];
 
         while !self.is_at_end() {
-            if let Some(token) = self.scan_token() {
-                tokens.push(token);
-            } else {
-                tokens.push(TokenTree::Error(todo!()));
-                break;
+            match self.scan_token() {
+                Ok(token) => tokens.push(token),
+                Err(err) => {
+                    self.errors.add(err);
+                    tokens.push(TokenTree::Error(Span::new(0, 0, Rc::clone(&self.source))));
+                    break;
+                }
             }
         }
 
         tokens.push(TokenTree::End);
+
+        dbg!(&tokens);
 
         let errors = if self.errors.is_empty() {
             None
@@ -55,7 +63,7 @@ impl Scanner {
         )
     }
 
-    fn scan_token(&mut self) -> Option<TokenTree> {
+    fn scan_token(&mut self) -> Result<TokenTree, Error> {
         let token = match self.peek(0)? {
             c if PunctKind::try_from(c).is_ok() => {
                 let kind = c.try_into().unwrap();
@@ -90,17 +98,15 @@ impl Scanner {
             '"' => {
                 let open = self.current;
                 self.current += 1;
-                while let Some(c) = self.peek(0) {
+                while let Ok(c) = self.peek(0) {
                     if c == '"' {
                         break;
                     } else {
                         self.current += 1;
                     }
                 }
-                if self.peek(0).is_none() {
-                    self.errors.pop();
-                    self.errors.pop();
-                    self.errors.add(Error::new(
+                if self.peek(0).is_err() {
+                    return Err(Error::new(
                         Rc::clone(&self.source),
                         ErrorKind::UnterminatedString(Span::new(
                             open,
@@ -108,7 +114,6 @@ impl Scanner {
                             Rc::clone(&self.source),
                         )),
                     ));
-                    return None;
                 }
                 let value =
                     LiteralValue::String(self.source.contents[open + 1..self.current].to_owned());
@@ -139,33 +144,13 @@ impl Scanner {
             }
             c if c.is_alphabetic() || c == '_' => {
                 let start = self.current;
-                while valid_ident_char(self.peek(0)?) {
+                while valid_ident_char(self.peek(0).ok()) {
                     self.current += 1;
                 }
-                let string = &self.source.contents[start..self.current];
+                let string = self.source.contents[start..self.current].to_string();
                 let span = Span::new(start, self.current, Rc::clone(&self.source));
 
-                let string = if string.starts_with("__lang") {
-                    let mut new_string = String::with_capacity(string.len() + 6);
-                    new_string.push_str("__user");
-                    new_string.push_str(string);
-                    new_string
-                } else {
-                    string.to_owned()
-                };
                 TokenTree::Ident(Ident { string, span })
-            }
-            ')' | ']' | '}' => {
-                self.errors.add(Error::new(
-                    Rc::clone(&self.source),
-                    ErrorKind::UnopenedDelimiter(Span::new(
-                        self.current,
-                        self.current + 1,
-                        Rc::clone(&self.source),
-                    )),
-                ));
-                self.current += 1;
-                TokenTree::Error(todo!())
             }
             _ => {
                 self.errors.add(Error::new(
@@ -181,25 +166,27 @@ impl Scanner {
             }
         };
 
-        Some(token)
+        Ok(token)
     }
 
-    fn peek(&mut self, offset: usize) -> Option<char> {
+    fn peek(&mut self, offset: usize) -> Result<char, Error> {
         if self.current + offset >= self.source.contents.len() {
-            self.errors.add(Error::new(
+            Err(Error::new(
                 Rc::clone(&self.source),
                 ErrorKind::EndOfFile(self.source.contents.len()),
-            ));
-            None
+            ))
         } else {
-            self.source.contents[self.current + offset..self.current + offset + 1]
-                .chars()
-                .next() // Will always be `Some`
+            Ok(
+                self.source.contents[self.current + offset..self.current + offset + 1]
+                    .chars()
+                    .next()
+                    .unwrap(),
+            )
         }
     }
 
     fn is_at_end(&mut self) -> bool {
-        self.current >= self.end
+        dbg!(self.current) >= dbg!(self.end)
     }
 }
 
