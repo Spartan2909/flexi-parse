@@ -5,17 +5,22 @@ use crate::Parse;
 use crate::ParseStream;
 use crate::Result;
 use crate::Span;
+use crate::TokenStream;
 use crate::TokenTree;
 
 use std::collections::HashSet;
 use std::fmt;
+use std::marker::PhantomData;
 use std::rc::Rc;
 use std::result;
 
 #[doc(hidden)]
 pub use concat_idents::concat_idents;
 
-pub trait Token: Parse + Sealed {}
+pub trait Token: Parse + Sealed {
+    #[doc(hidden)]
+    fn span(&self) -> &Span;
+}
 
 impl<T: Token> Parse for Option<T> {
     fn parse(input: ParseStream) -> Result<Self> {
@@ -33,6 +38,99 @@ pub trait Punct: Token {
 
 pub trait WhiteSpace: Punct {}
 
+pub trait Delimiter {
+    type Start: Punct;
+    type End: Punct;
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Parenthesis;
+
+impl Delimiter for Parenthesis {
+    type Start = LeftParen;
+    type End = RightParen;
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Brackets;
+
+impl Delimiter for Brackets {
+    type Start = LeftBracket;
+    type End = RightBracket;
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Braces;
+
+impl Delimiter for Braces {
+    type Start = LeftBrace;
+    type End = RightBrace;
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct AngleBrackets;
+
+impl Delimiter for AngleBrackets {
+    type Start = LAngle;
+    type End = RAngle;
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SingleQuotes;
+
+impl Delimiter for SingleQuotes {
+    type Start = SingleQuote;
+    type End = SingleQuote;
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct DoubleQuotes;
+
+impl Delimiter for DoubleQuotes {
+    type Start = DoubleQuote;
+    type End = DoubleQuote;
+}
+
+#[derive(Debug, Clone)]
+pub struct Group<D: Delimiter> {
+    token_stream: TokenStream,
+    span: Span,
+    _marker: PhantomData<D>,
+}
+
+impl<D: Delimiter> Group<D> {
+    pub fn token_stream(self) -> TokenStream {
+        self.token_stream
+    }
+}
+
+impl<D: Delimiter> Parse for Group<D> {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
+        let start_span = input.parse::<D::Start>()?.span().clone();
+        let group_start = start_span.start;
+        let contents_start = start_span.end;
+        while !input.peek::<D::End>() {
+            input.next()?;
+        }
+        let end_span = input.parse::<D::End>()?.span().clone();
+        let contents_end = end_span.start;
+        let group_end = end_span.end;
+        let tokens = input
+            .get_absolute_range(contents_start..contents_end)?
+            .to_vec();
+        let token_stream = TokenStream {
+            tokens,
+            source: Rc::clone(&input.source),
+        };
+        let span = Span::new(group_start, group_end, Rc::clone(&input.source));
+        Ok(Group {
+            token_stream,
+            span,
+            _marker: PhantomData,
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Ident {
     pub(crate) string: String,
@@ -42,10 +140,6 @@ pub struct Ident {
 impl Ident {
     pub fn string(&self) -> &String {
         &self.string
-    }
-
-    pub fn span(&self) -> &Span {
-        &self.span
     }
 }
 
@@ -86,7 +180,11 @@ impl Parse for Ident {
 
 impl Sealed for Ident {}
 
-impl Token for Ident {}
+impl Token for Ident {
+    fn span(&self) -> &Span {
+        &self.span
+    }
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct SingleCharPunct {
@@ -155,10 +253,92 @@ impl<'a> TryFrom<&'a TokenTree> for &'a Literal {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum LiteralValue {
-    Int(i64),
+    Int(u64),
     Float(f64),
-    String(String),
-    Char(char),
+}
+
+#[derive(Debug, Clone)]
+pub struct LitInt {
+    value: u64,
+    span: Span,
+}
+
+impl LitInt {
+    pub fn value(&self) -> u64 {
+        self.value
+    }
+}
+
+impl Parse for LitInt {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
+        let token = input.next()?;
+        if let TokenTree::Literal(Literal {
+            value: LiteralValue::Int(value),
+            span,
+        }) = token
+        {
+            Ok(LitInt {
+                value: *value,
+                span: span.clone(),
+            })
+        } else {
+            Err(Error::unexpected_token(
+                HashSet::from_iter(["an integer literal".to_string()]),
+                token.span().clone(),
+                Rc::clone(&input.source),
+            ))
+        }
+    }
+}
+
+impl Sealed for LitInt {}
+
+impl Token for LitInt {
+    fn span(&self) -> &Span {
+        &self.span
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LitFloat {
+    value: f64,
+    span: Span,
+}
+
+impl LitFloat {
+    pub fn value(&self) -> f64 {
+        self.value
+    }
+}
+
+impl Parse for LitFloat {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
+        let token = input.next()?;
+        if let TokenTree::Literal(Literal {
+            value: LiteralValue::Float(value),
+            span,
+        }) = token
+        {
+            Ok(LitFloat {
+                value: *value,
+                span: span.clone(),
+            })
+        } else {
+            Err(Error::unexpected_token(
+                HashSet::from_iter(["a float literal".to_string()]),
+                token.span().clone(),
+                Rc::clone(&input.source),
+            ))
+        }
+    }
+}
+
+impl Sealed for LitFloat {}
+
+impl Token for LitFloat {
+    fn span(&self) -> &Span {
+        &self.span
+    }
 }
 
 macro_rules! tokens {
@@ -178,12 +358,6 @@ macro_rules! tokens {
             #[doc = $doc1]
             pub struct $t1(Span);
 
-            impl $t1 {
-                pub fn span(&self) -> &Span {
-                    &self.0
-                }
-            }
-
             impl Parse for $t1 {
                 fn parse(input: ParseStream<'_>) -> Result<Self> {
                     let token = input.next()?.to_owned();
@@ -200,7 +374,11 @@ macro_rules! tokens {
 
             impl Sealed for $t1 {}
 
-            impl Token for $t1 {}
+            impl Token for $t1 {
+                fn span(&self) -> &Span {
+                    &self.0
+                }
+            }
 
             impl fmt::Display for $t1 {
                 fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -268,7 +446,11 @@ macro_rules! tokens {
 
             impl Sealed for $t2 {}
 
-            impl Token for $t2 {}
+            impl Token for $t2 {
+                fn span(&self) -> &Span {
+                    &self.0
+                }
+            }
 
             impl fmt::Display for $t2 {
                 fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -325,7 +507,11 @@ macro_rules! tokens {
 
             impl Sealed for $t3 {}
 
-            impl Token for $t3 {}
+            impl Token for $t3 {
+                fn span(&self) -> &Span {
+                    &self.0
+                }
+            }
 
             impl fmt::Display for $t3 {
                 fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -378,6 +564,8 @@ tokens! {
         (Space, ' ', "` `")
         (UnderScore, '_', "`_`")
         (NewLine, '\n', "`\\n`")
+        (SingleQuote, '\'', "`'`")
+        (DoubleQuote, '"', "`\"`")
     }
     {
         (BangEqual, Bang, Equal, "!=", "`!=`")
@@ -415,7 +603,7 @@ fn parse_joint_impl<T1: Punct, T2: Punct>(input: ParseStream<'_>) -> Result<(T1,
     if let TokenTree::Punct(SingleCharPunct {
         spacing: Spacing::Joint,
         ..
-    }) = input.get(-1)?
+    }) = input.get_relative(-1)?
     {
     } else {
         return Err(Error::empty());
@@ -441,7 +629,11 @@ impl<T1: Punct, T2: Punct> Parse for (T1, T2) {
 
 impl<T1: Punct, T2: Punct> Sealed for (T1, T2) {}
 
-impl<T1: Punct, T2: Punct> Token for (T1, T2) {}
+impl<T1: Punct, T2: Punct> Token for (T1, T2) {
+    fn span(&self) -> &Span {
+        todo!()
+    }
+}
 
 impl<T1: Punct, T2: Punct> Punct for (T1, T2) {
     fn display() -> String {
@@ -466,7 +658,11 @@ impl Parse for Space2 {
 
 impl Sealed for Space2 {}
 
-impl Token for Space2 {}
+impl Token for Space2 {
+    fn span(&self) -> &Span {
+        &self.0
+    }
+}
 
 impl Punct for Space2 {
     fn display() -> String {
@@ -493,7 +689,11 @@ impl Parse for Space4 {
 
 impl Sealed for Space4 {}
 
-impl Token for Space4 {}
+impl Token for Space4 {
+    fn span(&self) -> &Span {
+        &self.0
+    }
+}
 
 impl Punct for Space4 {
     fn display() -> String {
@@ -521,6 +721,7 @@ impl WhiteSpace for Space4 {}
 #[macro_export]
 macro_rules! keywords {
     [ $( $kw:tt ),+ ] => {
+        use $crate::token::Token as _;
         $(
             $crate::token::concat_idents!(struct_name = keyword_, $kw {
                 #[derive(Debug, Clone)]
@@ -544,7 +745,11 @@ macro_rules! keywords {
 
                 impl $crate::private::Sealed for struct_name {}
 
-                impl $crate::token::Token for struct_name {}
+                impl $crate::token::Token for struct_name {
+                    fn span(&self) -> &$crate::Span {
+                        &self.0
+                    }
+                }
             });
         )+
 

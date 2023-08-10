@@ -21,6 +21,14 @@ fn valid_ident_char(c: Option<char>) -> bool {
     }
 }
 
+fn compare_result<T: PartialEq, E>(l: Result<T, E>, r: T) -> bool {
+    if let Ok(l) = l {
+        l == r
+    } else {
+        false
+    }
+}
+
 #[derive(Debug)]
 struct Scanner {
     current: usize,
@@ -76,10 +84,15 @@ impl Scanner {
             }
             c if c.is_ascii_digit() => {
                 let start = self.current;
-                while self.peek(0)?.is_ascii_digit() {
-                    self.current += 1;
+                loop {
+                    let c = self.peek(0);
+                    if c.is_ok() && c.unwrap().is_digit(10) {
+                        self.current += 1;
+                    } else {
+                        break;
+                    }
                 }
-                let value = if self.peek(0)? == '.' && self.peek(1)?.is_ascii_digit() {
+                let value = if compare_result(self.peek(0), '.') && self.peek(1)?.is_ascii_digit() {
                     self.current += 1;
                     while self.peek(0)?.is_ascii_digit() {
                         self.current += 1;
@@ -92,52 +105,6 @@ impl Scanner {
                     value,
                     span: Span::new(start, self.current, Rc::clone(&self.source)),
                 })
-            }
-            '"' => {
-                let open = self.current;
-                self.current += 1;
-                while let Ok(c) = self.peek(0) {
-                    if c == '"' {
-                        break;
-                    } else {
-                        self.current += 1;
-                    }
-                }
-                if self.peek(0).is_err() {
-                    return Err(Error::new(
-                        Rc::clone(&self.source),
-                        ErrorKind::UnterminatedString(Span::new(
-                            open,
-                            self.source.contents.len(),
-                            Rc::clone(&self.source),
-                        )),
-                    ));
-                }
-                let value =
-                    LiteralValue::String(self.source.contents[open + 1..self.current].to_owned());
-                self.current += 1;
-                TokenTree::Literal(Literal {
-                    value,
-                    span: Span::new(open, self.current, Rc::clone(&self.source)),
-                })
-            }
-            '\'' => {
-                let start = self.current;
-                self.current += 1;
-                let value = LiteralValue::Char(
-                    self.source.contents[self.current..].chars().next().unwrap(),
-                );
-                self.current += 1;
-                let span = Span::new(start, self.current + 1, Rc::clone(&self.source));
-                if self.peek(0)? == '\'' {
-                    self.current += 1;
-                    TokenTree::Literal(Literal { value, span })
-                } else {
-                    return Err(Error::new(
-                        Rc::clone(&self.source),
-                        ErrorKind::UnterminatedChar(span),
-                    ));
-                }
             }
             c if c.is_alphabetic() || c == '_' => {
                 let start = self.current;

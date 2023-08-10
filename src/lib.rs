@@ -13,9 +13,11 @@ use std::fs;
 use std::io;
 use std::marker::PhantomData;
 use std::mem;
+use std::ops::Range;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::result;
+use std::slice;
 
 pub mod error;
 mod scanner;
@@ -97,16 +99,21 @@ pub trait Parse: Sized {
     fn parse(input: ParseStream<'_>) -> Result<Self>;
 }
 
-/// Skips whitespace
-pub fn parse<T: Parse>(mut tokens: TokenStream) -> Result<T> {
+/// Parses the given tokens into the syntax tree node `T`.
+/// 
+/// This function ignores all whitespace.
+pub fn parse<T: Parse>(tokens: &mut TokenStream) -> Result<T> {
     tokens.skip_whitespace();
-    let parse_buffer = ParseBuffer::from(&tokens);
+    let parse_buffer = ParseBuffer::from(&*tokens);
     parse_buffer.parse()
 }
 
+/// Scans and parses the given source file into the syntax tree node `T`.
+/// 
+/// This function ignores all whitespace.
 pub fn parse_source<T: Parse>(source: Rc<SourceFile>) -> Result<T> {
-    let (tokens, error) = scanner::scan(source);
-    parse(tokens).map_err(|mut err| {
+    let (mut tokens, error) = scanner::scan(source);
+    parse(&mut tokens).map_err(|mut err| {
         if let Some(error) = error {
             err.add(error)
         }
@@ -114,6 +121,9 @@ pub fn parse_source<T: Parse>(source: Rc<SourceFile>) -> Result<T> {
     })
 }
 
+/// Scans and parses the given string into the syntax tree node `T`.
+/// 
+/// This function ignores all whitespace.
 pub fn parse_string<T: Parse>(source: String) -> Result<T> {
     let source = Rc::new(SourceFile {
         name: "str".to_string(),
@@ -121,6 +131,18 @@ pub fn parse_string<T: Parse>(source: String) -> Result<T> {
         contents: source,
     });
     parse_source(source)
+}
+
+/// Gets the `Ok` value, panicking with a formatted error message if the value
+/// is `Err`.
+/// ## Panics
+/// Panics if the contained value is `Err`.
+#[cfg(feature = "ariadne")]
+pub fn pretty_unwrap<T>(result: Result<T>) -> T {
+    result.unwrap_or_else(|err| {
+        err.eprint().unwrap();
+        panic!("failed to parse due to above errors");
+    })
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -160,6 +182,7 @@ impl TokenStream {
 ///
 /// This struct is unstable, and should only be used through the stable alias
 /// [`ParseStream`].
+#[derive(Clone)]
 pub struct ParseBuffer<'a> {
     // Instead of Cell<Cursor<'a>> so that ParseBuffer<'a> is covariant in 'a.
     cursor: Cell<Cursor<'static>>,
@@ -199,9 +222,9 @@ impl<'a> ParseBuffer<'a> {
 
     fn parse_undo<T: Parse>(&self) -> Result<T> {
         let cursor = self.cursor.get();
-        let val = T::parse(self)?;
+        let val = T::parse(self);
         self.cursor.set(cursor);
-        Ok(val)
+        val
     }
 
     fn report_error_tokens(&self) -> Result<()> {
@@ -243,11 +266,21 @@ impl<'a> ParseBuffer<'a> {
         }
     }
 
-    fn get(&self, offset: isize) -> Result<&'a TokenTree> {
-        self.cursor.get().get(offset).ok_or(Error::new(
+    fn get_relative(&self, offset: isize) -> Result<&'a TokenTree> {
+        self.cursor.get().get_relative(offset).ok_or(Error::new(
             Rc::clone(&self.source),
             ErrorKind::EndOfFile(self.source.contents.len()),
         ))
+    }
+
+    fn get_absolute_range(&self, range: Range<usize>) -> Result<&'a [TokenTree]> {
+        self.cursor
+            .get()
+            .get_absolute_range(range)
+            .ok_or(Error::new(
+                Rc::clone(&self.source),
+                ErrorKind::EndOfFile(self.source.contents.len()),
+            ))
     }
 }
 
@@ -310,12 +343,26 @@ impl<'a> Cursor<'a> {
         (token_tree, cursor)
     }
 
-    fn get(self, offset: isize) -> Option<&'a TokenTree> {
+    fn get_relative(self, offset: isize) -> Option<&'a TokenTree> {
         let ptr = self.ptr as isize + offset;
         if self.start as isize <= ptr && self.end as isize > ptr {
             // SAFETY: `ptr` is live for 'a and is guaranteed by condition
             // to be valid.
             Some(unsafe { &*(ptr as *const TokenTree) })
+        } else {
+            None
+        }
+    }
+
+    fn get_absolute_range(self, range: Range<usize>) -> Option<&'a [TokenTree]> {
+        let start_ptr = self.start as usize + range.start;
+        let end_ptr = self.start as usize + range.end;
+        if start_ptr < self.end as usize && end_ptr < self.end as usize {
+            // SAFETY: `ptr` is guaranteed by condition to be in range
+            let ptr = unsafe { self.start.add(range.start) };
+            // SAFETY: `ptr` is live for 'a and is guaranteed by condition
+            // to be valid.
+            Some(unsafe { slice::from_raw_parts(ptr, range.end - range.start) })
         } else {
             None
         }

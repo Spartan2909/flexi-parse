@@ -13,3 +13,7 @@ default = ["ariadne", "proc-macro2"]
 ariadne = ["dep:ariadne"]
 proc-macro = ["proc-macro2", "proc-macro2/proc-macro"]
 proc-macro2 = ["dep:proc-macro2"]
+
+[[example]]
+name = "calc"
+test = true
