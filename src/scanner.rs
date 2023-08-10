@@ -135,11 +135,10 @@ impl Scanner {
                     self.current += 1;
                     TokenTree::Literal(Literal { value, span })
                 } else {
-                    self.errors.add(Error::new(
+                    return Err(Error::new(
                         Rc::clone(&self.source),
                         ErrorKind::UnterminatedChar(span),
                     ));
-                    TokenTree::Error(todo!())
                 }
             }
             c if c.is_alphabetic() || c == '_' => {
@@ -153,7 +152,8 @@ impl Scanner {
                 TokenTree::Ident(Ident { string, span })
             }
             _ => {
-                self.errors.add(Error::new(
+                self.current += 1;
+                return Err(Error::new(
                     Rc::clone(&self.source),
                     ErrorKind::UnknownCharacter(Span::new(
                         self.current,
@@ -161,8 +161,6 @@ impl Scanner {
                         Rc::clone(&self.source),
                     )),
                 ));
-                self.current += 1;
-                TokenTree::Error(todo!())
             }
         };
 

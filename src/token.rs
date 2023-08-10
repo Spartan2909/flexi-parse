@@ -191,7 +191,7 @@ macro_rules! tokens {
                         Ok(Self(span))
                     } else {
                         Err(Error::new(Rc::clone(&input.source), ErrorKind::UnexpectedToken {
-                            expected: HashSet::from_iter(vec![$name1.to_string()]),
+                            expected: HashSet::from_iter(vec![format!("'{}'", $name1)]),
                             span: token.span().clone(),
                         }))
                     }
@@ -259,7 +259,7 @@ macro_rules! tokens {
                     let span = input.current()?.span();
                     Self::from_tokens_impl(input).map_err(|_| {
                         Error::new(Rc::clone(&input.source), ErrorKind::UnexpectedToken {
-                            expected: HashSet::from_iter(vec![$name2.to_string()]),
+                            expected: HashSet::from_iter(vec![format!("'{}'", $name2)]),
                             span: span.clone(),
                         })
                     })
@@ -316,7 +316,7 @@ macro_rules! tokens {
                     let span = input.current()?.span();
                     Self::from_tokens_impl(input).map_err(|_| {
                         Error::new(Rc::clone(&input.source), ErrorKind::UnexpectedToken {
-                            expected: HashSet::from_iter(vec![$name3.to_string()]),
+                            expected: HashSet::from_iter(vec![format!("'{}'", $name3)]),
                             span: span.clone(),
                         })
                     })

@@ -20,7 +20,6 @@ pub(crate) enum ErrorKind {
     },
     EndOfFile(usize),
     UnterminatedString(Span),
-    UnopenedDelimiter(Span),
 }
 
 impl ErrorKind {
@@ -35,8 +34,7 @@ impl ErrorKind {
             ErrorKind::UnknownCharacter(span)
             | ErrorKind::UnterminatedChar(span)
             | ErrorKind::UnterminatedString(span)
-            | ErrorKind::UnexpectedToken { span, .. }
-            | ErrorKind::UnopenedDelimiter(span) => span.start,
+            | ErrorKind::UnexpectedToken { span, .. } => span.start,
             ErrorKind::EndOfFile(n) => *n,
         }
     }
@@ -67,10 +65,6 @@ impl Error {
 
     pub(crate) fn is_empty(&self) -> bool {
         self.errors.is_empty()
-    }
-
-    pub(crate) fn pop(&mut self) {
-        self.errors.pop();
     }
 
     pub fn add(&mut self, mut other: Error) {

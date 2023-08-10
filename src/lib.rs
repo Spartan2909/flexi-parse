@@ -336,18 +336,6 @@ impl TokenTree {
         }
     }
 
-    fn is_whitespace(&self) -> bool {
-        if let TokenTree::Punct(punct) = self {
-            if punct.kind == PunctKind::Space {
-                true
-            } else {
-                false
-            }
-        } else {
-            false
-        }
-    }
-
     fn set_span(&mut self, span: Span) {
         match self {
             TokenTree::Error(current_span) => *current_span = span,

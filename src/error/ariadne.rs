@@ -36,8 +36,7 @@ impl From<&ErrorKind> for ReportKind<'static> {
             | ErrorKind::UnterminatedChar(_)
             | ErrorKind::UnexpectedToken { .. }
             | ErrorKind::EndOfFile(_)
-            | ErrorKind::UnterminatedString(_)
-            | ErrorKind::UnopenedDelimiter(_) => ReportKind::Error,
+            | ErrorKind::UnterminatedString(_) => ReportKind::Error,
         }
     }
 }
@@ -101,14 +100,25 @@ impl From<&SingleError> for Report {
                 builder.set_message("Expect \"'\" after character literal");
                 builder.add_label(Label::new(span.clone()).with_color(Color::Red));
             }
-            ErrorKind::UnexpectedToken { expected, span } => {}
+            ErrorKind::UnexpectedToken { expected, span } => {
+                builder.set_message("Unexpected token");
+                let message = if expected.len() == 1 {
+                    format!("Expected {}", expected.into_iter().next().unwrap())
+                } else {
+                    let mut message = "Expected one of ".to_string();
+                    for (i, token) in expected.into_iter().enumerate() {
+                        message.push_str(token);
+                        if i + 1 < expected.len() {
+                            message.push_str(", ");
+                        }
+                    }
+                    message
+                };
+                builder.add_label(Label::new(span.clone()).with_color(Color::Red).with_message(message));
+            }
             ErrorKind::EndOfFile(_) => builder.set_message("Unexpected end of file while parsing"),
             ErrorKind::UnterminatedString(span) => {
                 builder.set_message("Expect '\"' at end of string literal");
-                builder.add_label(Label::new(span.clone()).with_color(Color::Red));
-            }
-            ErrorKind::UnopenedDelimiter(span) => {
-                builder.set_message("Unmatched delimiter");
                 builder.add_label(Label::new(span.clone()).with_color(Color::Red));
             }
         }
