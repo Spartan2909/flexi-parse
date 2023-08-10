@@ -100,20 +100,20 @@ pub trait Parse: Sized {
 }
 
 /// Parses the given tokens into the syntax tree node `T`.
-/// 
+///
 /// This function ignores all whitespace.
-pub fn parse<T: Parse>(tokens: &mut TokenStream) -> Result<T> {
+pub fn parse<T: Parse>(mut tokens: TokenStream) -> Result<T> {
     tokens.skip_whitespace();
-    let parse_buffer = ParseBuffer::from(&*tokens);
+    let parse_buffer = ParseBuffer::from(&tokens);
     parse_buffer.parse()
 }
 
 /// Scans and parses the given source file into the syntax tree node `T`.
-/// 
+///
 /// This function ignores all whitespace.
 pub fn parse_source<T: Parse>(source: Rc<SourceFile>) -> Result<T> {
-    let (mut tokens, error) = scanner::scan(source);
-    parse(&mut tokens).map_err(|mut err| {
+    let (tokens, error) = scanner::scan(source);
+    parse(tokens).map_err(|mut err| {
         if let Some(error) = error {
             err.add(error)
         }
@@ -122,7 +122,7 @@ pub fn parse_source<T: Parse>(source: Rc<SourceFile>) -> Result<T> {
 }
 
 /// Scans and parses the given string into the syntax tree node `T`.
-/// 
+///
 /// This function ignores all whitespace.
 pub fn parse_string<T: Parse>(source: String) -> Result<T> {
     let source = Rc::new(SourceFile {
@@ -419,6 +419,89 @@ impl From<Literal> for TokenTree {
 }
 
 pub type Result<T> = result::Result<T, Error>;
+
+/// A macro to get the type of a punctuation token.
+/// 
+/// To avoid ambiguity, whitespace tokens are not available through this this
+/// macro. Instead, use them directly, such as in `token::Space4`.
+/// 
+/// If the punctuation you want is not recognised by this macro, split it into
+/// its constituent parts, e.g. `Punct!["£", "$"]` for `£$` or
+/// `Punct!["++", "-"]` for `++-`.
+/// 
+/// Note that unlike [`syn::Token`], this macro accepts the token as a quoted
+/// string. This allows tokens not recognised by the Rust scanner to be
+/// accessed with this macro.
+///
+/// [`syn::Token`]: https://docs.rs/syn/latest/syn/macro.Token.html
+#[macro_export]
+macro_rules! Punct {
+    ["&"] => { $crate::token::Ampersand };
+    ["&&"] => { $crate::token::AmpersandAmpersand };
+    ["*"] => { $crate::token::Asterisk };
+    ["*="] => { $crate::token::AsteriskEqual };
+    ["@"] => { $crate::token::At };
+    ["\\"] => { $crate::token::Backslash };
+    ["`"] => { $crate::token::BackTick };
+    ["!"] => { $crate::token::Bang };
+    ["!="] => { $crate::token::BangEqual };
+    ["^"] => { $crate::token::Caret };
+    [":"] => { $crate::token::Colon };
+    ["::"] => { $crate::token::ColonColon };
+    ["::"] => { $crate::token::ColonColonEqual };
+    [","] => { $crate::token::Comma };
+    ["-"] => { $crate::token::Dash };
+    ["--"] => { $crate::token::DashDash };
+    ["-="] => { $crate::token::DashEqual };
+    ["$"] => { $crate::token::Dollar };
+    ["."] => { $crate::token::Dot };
+    ["\""] => { $crate::token::DoubleQuote };
+    ["="] => { $crate::token::Equal };
+    ["=>"] => { $crate::token::FatArrow };
+    ["#"] => { $crate::token::Hash };
+    ["##"] => { $crate::token::HashHash };
+    ["###"] => { $crate::token::HashHashHash };
+    ["<"] => { $crate::token::LAngle };
+    ["<="] => { $crate::token::LAngleEqual };
+    ["<<"] => { $crate::token::LAngleLAngle };
+    ["<<="] => { $crate::token::LAngleLAngleEqual };
+    ["<-"] => { $crate::token::LThinArrow };
+    ["{"] => { $crate::token::LeftBrace };
+    ["["] => { $crate::token::LeftBracket };
+    ["("] => { $crate::token::LeftParen };
+    ["\n"] => { $crate::token::NewLine };
+    ["%"] => { $crate::token::Percent };
+    ["%="] => { $crate::token::PercentEqual };
+    ["|"] => { $crate::token::Pipe };
+    ["||"] => { $crate::token::PipePipe };
+    ["+"] => { $crate::token::Plus };
+    ["+="] => { $crate::token::PlusEqual };
+    ["++"] => { $crate::token::PlusPlus };
+    ["£"] => { $crate::token::Pound };
+    ["?"] => { $crate::token::Question };
+    [">"] => { $crate::token::RAngle };
+    [">="] => { $crate::token::RAngleEqual };
+    [">>"] => { $crate::token::RAngleRAngle };
+    [">>="] => { $crate::token::RAngleRAngleEqual };
+    ["->"] => { $crate::token::RThinArrow };
+    ["}"] => { $crate::token::RightBrace };
+    ["]"] => { $crate::token::RightBracket };
+    [")"] => { $crate::token::RightParen };
+    [";"] => { $crate::token::SemiColon };
+    ["'"] => { $crate::token::SingleQuote };
+    ["/"] => { $crate::token::Slash };
+    ["/="] => { $crate::token::SlashEqual };
+    ["//"] => { $crate::token::SlashSlash };
+    ["//="] => { $crate::token::SlashSlashEqual };
+    ["~"] => { $crate::token::Tilde };
+    ["¬"] => { $crate::token::Tilde2 };
+    ["_"] => { $crate::token::UnderScore };
+    [$l:tt, $( $r:tt ),+] => {
+        // The trailing comma isn't ideal, but it gets rid of the
+        // `unused_parens` warning
+        ($crate::Punct![$l], ($crate::Punct![$( $r ),+],))
+    };
+}
 
 #[doc(hidden)]
 pub mod private {

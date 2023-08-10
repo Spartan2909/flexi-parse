@@ -73,7 +73,7 @@ impl Scanner {
         let token = match self.peek(0)? {
             c if PunctKind::try_from(c).is_ok() => {
                 let kind = c.try_into().unwrap();
-                let spacing = Spacing::from(self.peek(1)?);
+                let spacing = Spacing::from(self.peek(1));
                 let span = Span::new(self.current, self.current + 1, Rc::clone(&self.source));
                 self.current += 1;
                 TokenTree::Punct(SingleCharPunct {

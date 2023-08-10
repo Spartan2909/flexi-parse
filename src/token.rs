@@ -217,10 +217,14 @@ pub(crate) enum Spacing {
     Joint,
 }
 
-impl From<char> for Spacing {
-    fn from(value: char) -> Self {
-        if PunctKind::try_from(value).is_ok() {
-            Spacing::Joint
+impl From<Result<char>> for Spacing {
+    fn from(value: Result<char>) -> Self {
+        if let Ok(c) = value {
+            if PunctKind::try_from(c).is_ok() {
+                Spacing::Joint
+            } else {
+                Spacing::Alone
+            }
         } else {
             Spacing::Alone
         }
@@ -569,8 +573,8 @@ tokens! {
     }
     {
         (BangEqual, Bang, Equal, "!=", "`!=`")
-        (GreaterEqual, RAngle, Equal, ">=", "`>=`")
-        (LessEqual, LAngle, Equal, "<=", "`<=`")
+        (RAngleEqual, RAngle, Equal, ">=", "`>=`")
+        (LAngleEqual, LAngle, Equal, "<=", "`<=`")
         (PlusEqual, Plus, Equal, "+=", "`+=`")
         (DashEqual, Dash, Equal, "-=", "`-=`")
         (AsteriskEqual, Asterisk, Equal, "*=", "`*=`")
@@ -584,8 +588,10 @@ tokens! {
         (SlashSlash, Slash, Slash, "//", "`//`")
         (ColonColon, Colon, Colon, "::", "`::`")
         (HashHash, Hash, Hash, "##", "`##`")
-        (LogicalAnd, Ampersand, Ampersand, "&&", "`&&`")
-        (LogicalOr, Pipe, Pipe, "||", "`||`")
+        (AmpersandAmpersand, Ampersand, Ampersand, "&&", "`&&`")
+        (PipePipe, Pipe, Pipe, "||", "`||`")
+        (PlusPlus, Plus, Plus, "++", "`++`")
+        (DashDash, Dash, Dash, "--", "`--`")
     }
     {
         (HashHashHash, Hash, Hash, Hash, "###", "`###`")
@@ -597,6 +603,26 @@ tokens! {
 }
 
 impl WhiteSpace for Space {}
+
+impl<T: Punct> Parse for (T,) {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
+        Ok((T::parse(input)?,))
+    }
+}
+
+impl<T: Punct> Sealed for (T,) {}
+
+impl<T: Punct> Token for (T,) {
+    fn span(&self) -> &Span {
+        self.0.span()
+    }
+}
+
+impl<T: Punct> Punct for (T,) {
+    fn display() -> String {
+        T::display()
+    }
+}
 
 fn parse_joint_impl<T1: Punct, T2: Punct>(input: ParseStream<'_>) -> Result<(T1, T2)> {
     let t1 = input.parse()?;
@@ -615,7 +641,7 @@ fn parse_joint_impl<T1: Punct, T2: Punct>(input: ParseStream<'_>) -> Result<(T1,
 impl<T1: Punct, T2: Punct> Parse for (T1, T2) {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let span = input.current()?.span();
-        parse_joint_impl(input).map_err(|_| {
+        let mut tuple = parse_joint_impl(input).map_err(|_| {
             Error::new(
                 Rc::clone(&input.source),
                 ErrorKind::UnexpectedToken {
@@ -623,7 +649,9 @@ impl<T1: Punct, T2: Punct> Parse for (T1, T2) {
                     span: span.clone(),
                 },
             )
-        })
+        })?;
+        // Set tuple.0 span
+        Ok(tuple)
     }
 }
 
@@ -631,7 +659,7 @@ impl<T1: Punct, T2: Punct> Sealed for (T1, T2) {}
 
 impl<T1: Punct, T2: Punct> Token for (T1, T2) {
     fn span(&self) -> &Span {
-        todo!()
+        self.0.span()
     }
 }
 

@@ -6,6 +6,7 @@ use flexi_parse::token::Group;
 use flexi_parse::token::Parenthesis;
 use flexi_parse::Parse;
 use flexi_parse::ParseStream;
+use flexi_parse::Punct;
 use flexi_parse::Result;
 
 #[derive(Debug, Clone)]
@@ -45,9 +46,9 @@ impl Parse for Expr {
 fn addition(input: ParseStream<'_>) -> Result<Expr> {
     let mut expr = factor(input)?;
     loop {
-        if input.parse::<Option<token::Plus>>()?.is_some() {
+        if input.parse::<Option<Punct!["+"]>>()?.is_some() {
             expr = Expr::Add(Box::new(expr), Box::new(factor(input)?));
-        } else if input.parse::<Option<token::Dash>>()?.is_some() {
+        } else if input.parse::<Option<Punct!["-"]>>()?.is_some() {
             expr = Expr::Sub(Box::new(expr), Box::new(factor(input)?));
         } else {
             break;
@@ -59,11 +60,11 @@ fn addition(input: ParseStream<'_>) -> Result<Expr> {
 fn factor(input: ParseStream<'_>) -> Result<Expr> {
     let mut expr: Expr = unary(input)?;
     loop {
-        if input.parse::<Option<token::Asterisk>>()?.is_some() {
+        if input.parse::<Option<Punct!["*"]>>()?.is_some() {
             expr = Expr::Mul(Box::new(expr), Box::new(unary(input)?));
-        } else if input.parse::<Option<token::Slash>>()?.is_some() {
+        } else if input.parse::<Option<Punct!["/"]>>()?.is_some() {
             expr = Expr::Div(Box::new(expr), Box::new(unary(input)?));
-        } else if input.parse::<Option<token::Percent>>()?.is_some() {
+        } else if input.parse::<Option<Punct!["%"]>>()?.is_some() {
             expr = Expr::Mod(Box::new(expr), Box::new(unary(input)?));
         } else {
             break;
@@ -73,7 +74,7 @@ fn factor(input: ParseStream<'_>) -> Result<Expr> {
 }
 
 fn unary(input: ParseStream<'_>) -> Result<Expr> {
-    if input.parse::<Option<token::Dash>>()?.is_some() {
+    if input.parse::<Option<Punct!["-"]>>()?.is_some() {
         Ok(Expr::Neg(Box::new(unary(input)?)))
     } else {
         primary(input)
@@ -87,7 +88,7 @@ fn primary(input: ParseStream<'_>) -> Result<Expr> {
         Ok(Expr::Num(f.value() as f64))
     } else {
         let group: Group<Parenthesis> = input.parse()?;
-        parse(&mut group.token_stream())
+        parse(group.token_stream())
     }
 }
 
