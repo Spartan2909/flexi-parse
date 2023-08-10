@@ -32,7 +32,8 @@ impl ariadne::Span for Span {
 impl From<&ErrorKind> for ReportKind<'static> {
     fn from(value: &ErrorKind) -> Self {
         match value {
-            ErrorKind::UnknownCharacter(_)
+            ErrorKind::Silent
+            | ErrorKind::UnknownCharacter(_)
             | ErrorKind::UnterminatedChar(_)
             | ErrorKind::UnexpectedToken { .. }
             | ErrorKind::EndOfFile(_)
@@ -92,6 +93,7 @@ impl From<&SingleError> for Report {
             ariadne::Report::build((&value.kind).into(), value.source.id(), value.kind.start())
                 .with_code(value.kind.discriminant());
         match &value.kind {
+            ErrorKind::Silent => unreachable!(),
             ErrorKind::UnknownCharacter(span) => {
                 builder.set_message("Unknown character");
                 builder.add_label(Label::new(span.clone()).with_color(Color::Red));
@@ -114,7 +116,11 @@ impl From<&SingleError> for Report {
                     }
                     message
                 };
-                builder.add_label(Label::new(span.clone()).with_color(Color::Red).with_message(message));
+                builder.add_label(
+                    Label::new(span.clone())
+                        .with_color(Color::Red)
+                        .with_message(message),
+                );
             }
             ErrorKind::EndOfFile(_) => builder.set_message("Unexpected end of file while parsing"),
             ErrorKind::UnterminatedString(span) => {
@@ -131,7 +137,13 @@ impl From<&SingleError> for Report {
 
 impl From<&Error> for Vec<Report> {
     fn from(value: &Error) -> Self {
-        value.errors.iter().map(Report::from).collect()
+        let mut reports = Vec::with_capacity(value.errors.len());
+        for error in &value.errors {
+            if !matches!(&error.kind, ErrorKind::Silent) {
+                reports.push(Report::from(error));
+            }
+        }
+        reports
     }
 }
 

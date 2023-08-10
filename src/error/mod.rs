@@ -12,6 +12,7 @@ pub use self::ariadne::Report;
 #[derive(Debug, Clone)]
 #[repr(u8)]
 pub(crate) enum ErrorKind {
+    Silent,
     UnknownCharacter(Span),
     UnterminatedChar(Span),
     UnexpectedToken {
@@ -31,6 +32,7 @@ impl ErrorKind {
 
     fn start(&self) -> usize {
         match self {
+            ErrorKind::Silent => panic!("called `start` on `ErrorKind::Silent`"),
             ErrorKind::UnknownCharacter(span)
             | ErrorKind::UnterminatedChar(span)
             | ErrorKind::UnterminatedString(span)

@@ -97,40 +97,21 @@ pub trait Parse: Sized {
     fn parse(input: ParseStream<'_>) -> Result<Self>;
 }
 
-pub trait Parser: Sized {
-    type Output;
-
-    fn parse(self, tokens: TokenStream) -> Result<Self::Output>;
-}
-
-impl<F, T> Parser for F
-where
-    F: FnOnce(ParseStream<'_>) -> Result<T>,
-{
-    type Output = T;
-
-    fn parse(self, tokens: TokenStream) -> Result<T> {
-        let cursor = Cursor {
-            start: &tokens.tokens[0],
-            ptr: &tokens.tokens[0],
-            end: tokens.tokens.last().unwrap(),
-            _marker: PhantomData,
-        };
-        let parse_buffer = ParseBuffer::new(cursor, tokens.source);
-        self(&parse_buffer)
-    }
-}
-
-pub fn parse<T: Parse>(tokens: TokenStream) -> Result<T> {
-    Parser::parse(T::parse, tokens)
+/// Skips whitespace
+pub fn parse<T: Parse>(mut tokens: TokenStream) -> Result<T> {
+    tokens.skip_whitespace();
+    let parse_buffer = ParseBuffer::from(&tokens);
+    parse_buffer.parse()
 }
 
 pub fn parse_source<T: Parse>(source: Rc<SourceFile>) -> Result<T> {
     let (tokens, error) = scanner::scan(source);
-    if let Some(error) = error {
-        return Err(error);
-    }
-    parse(tokens)
+    parse(tokens).map_err(|mut err| {
+        if let Some(error) = error {
+            err.add(error)
+        }
+        err
+    })
 }
 
 pub fn parse_string<T: Parse>(source: String) -> Result<T> {
@@ -162,14 +143,12 @@ impl TokenStream {
         self.filter(|tokens| {
             let mut indices = vec![];
             for (index, token) in tokens.tokens.iter().enumerate() {
-                if matches!(
-                    token,
-                    TokenTree::Punct(SingleCharPunct {
-                        kind: PunctKind::Space,
-                        ..
-                    })
-                ) {
-                    indices.push(index);
+                if let TokenTree::Punct(punct) = token {
+                    if matches!(&punct.kind, PunctKind::Space)
+                        || matches!(&punct.kind, PunctKind::NewLine)
+                    {
+                        indices.push(index);
+                    }
                 }
             }
             indices
@@ -202,7 +181,7 @@ impl<'a> ParseBuffer<'a> {
         T::parse(self)
     }
 
-    pub fn call<T, F: FnOnce(ParseStream<'_>) -> Result<T>>(&self, function: F) -> Result<T> {
+    pub fn parse_with<T, F: FnOnce(ParseStream<'_>) -> Result<T>>(&self, function: F) -> Result<T> {
         function(self)
     }
 
@@ -225,7 +204,21 @@ impl<'a> ParseBuffer<'a> {
         Ok(val)
     }
 
-    fn next(&self) -> Result<&TokenTree> {
+    fn report_error_tokens(&self) -> Result<()> {
+        let mut error = false;
+        while let (TokenTree::Error(_), cursor) = self.cursor.get().next() {
+            self.cursor.set(cursor);
+            error = true
+        }
+        if error {
+            Err(Error::new(Rc::clone(&self.source), ErrorKind::Silent))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn next(&self) -> Result<&'a TokenTree> {
+        self.report_error_tokens()?;
         if self.cursor.get().eof() {
             Err(Error::new(
                 Rc::clone(&self.source),
@@ -239,6 +232,7 @@ impl<'a> ParseBuffer<'a> {
     }
 
     fn current(&self) -> Result<&'a TokenTree> {
+        self.report_error_tokens()?;
         if self.cursor.get().eof() {
             Err(Error::new(
                 Rc::clone(&self.source),
@@ -254,6 +248,18 @@ impl<'a> ParseBuffer<'a> {
             Rc::clone(&self.source),
             ErrorKind::EndOfFile(self.source.contents.len()),
         ))
+    }
+}
+
+impl<'a> From<&'a TokenStream> for ParseBuffer<'a> {
+    fn from(value: &'a TokenStream) -> Self {
+        let cursor = Cursor {
+            start: &value.tokens[0],
+            ptr: &value.tokens[0],
+            end: value.tokens.last().unwrap(),
+            _marker: PhantomData,
+        };
+        ParseBuffer::new(cursor, Rc::clone(&value.source))
     }
 }
 
@@ -371,3 +377,6 @@ pub type Result<T> = result::Result<T, Error>;
 pub mod private {
     pub trait Sealed {}
 }
+
+#[cfg(test)]
+mod tests;
