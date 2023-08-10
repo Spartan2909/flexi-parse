@@ -344,7 +344,7 @@ impl<'a> Cursor<'a> {
     }
 
     fn get_relative(self, offset: isize) -> Option<&'a TokenTree> {
-        let ptr = self.ptr as isize + offset;
+        let ptr = self.ptr as isize + mem::size_of::<TokenTree>() as isize * offset;
         if self.start as isize <= ptr && self.end as isize > ptr {
             // SAFETY: `ptr` is live for 'a and is guaranteed by condition
             // to be valid.
