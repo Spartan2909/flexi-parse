@@ -76,4 +76,12 @@ impl Error {
     pub fn add(&mut self, mut other: Error) {
         self.errors.append(&mut other.errors);
     }
+
+    pub fn unexpected_token(
+        expected: HashSet<String>,
+        span: Span,
+        source: Rc<SourceFile>,
+    ) -> Error {
+        Error::new(source, ErrorKind::UnexpectedToken { expected, span })
+    }
 }

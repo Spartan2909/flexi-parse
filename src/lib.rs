@@ -86,6 +86,11 @@ impl Span {
     fn new(start: usize, end: usize, source: Rc<SourceFile>) -> Span {
         Span { start, end, source }
     }
+
+    #[doc(hidden)]
+    pub fn source(&self) -> &Rc<SourceFile> {
+        &self.source
+    }
 }
 
 pub trait Parse: Sized {
@@ -120,6 +125,23 @@ pub fn parse<T: Parse>(tokens: TokenStream) -> Result<T> {
     Parser::parse(T::parse, tokens)
 }
 
+pub fn parse_source<T: Parse>(source: Rc<SourceFile>) -> Result<T> {
+    let (tokens, error) = scanner::scan(source);
+    if let Some(error) = error {
+        return Err(error);
+    }
+    parse(tokens)
+}
+
+pub fn parse_string<T: Parse>(source: String) -> Result<T> {
+    let source = Rc::new(SourceFile {
+        name: "str".to_string(),
+        path: None,
+        contents: source,
+    });
+    parse_source(source)
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct TokenStream {
     tokens: Vec<TokenTree>,
@@ -127,7 +149,7 @@ pub struct TokenStream {
 }
 
 impl TokenStream {
-    fn filter<F: FnMut(&TokenStream) -> Vec<usize>>(&mut self, mut function: F) {
+    pub fn filter<F: FnMut(&TokenStream) -> Vec<usize>>(&mut self, mut function: F) {
         let mut indices = function(self);
         indices.sort_unstable();
         indices.reverse();
@@ -193,14 +215,14 @@ impl<'a> ParseBuffer<'a> {
     }
 
     pub fn peek<T: Token>(&self) -> bool {
-        self.try_parse::<T>().is_ok()
+        self.parse_undo::<T>().is_ok()
     }
 
-    fn parse_undo<T: Parse>(&self) -> bool {
+    fn parse_undo<T: Parse>(&self) -> Result<T> {
         let cursor = self.cursor.get();
-        let exists = T::parse(self).is_ok();
+        let val = T::parse(self)?;
         self.cursor.set(cursor);
-        exists
+        Ok(val)
     }
 
     fn next(&self) -> Result<&TokenTree> {
@@ -357,7 +379,7 @@ impl From<Literal> for TokenTree {
 
 pub type Result<T> = result::Result<T, Error>;
 
-mod private {
+#[doc(hidden)]
+pub mod private {
     pub trait Sealed {}
 }
-use private::Sealed;

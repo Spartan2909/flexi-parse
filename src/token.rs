@@ -12,6 +12,9 @@ use std::fmt;
 use std::rc::Rc;
 use std::result;
 
+#[doc(hidden)]
+pub use concat_idents::concat_idents;
+
 pub trait Token: Parse + Sealed {}
 
 impl<T: Token> Parse for Option<T> {
@@ -36,6 +39,16 @@ pub struct Ident {
     pub(crate) span: Span,
 }
 
+impl Ident {
+    pub fn string(&self) -> &String {
+        &self.string
+    }
+
+    pub fn span(&self) -> &Span {
+        &self.span
+    }
+}
+
 impl PartialEq for Ident {
     fn eq(&self, other: &Self) -> bool {
         self.string == other.string
@@ -56,10 +69,17 @@ impl TryFrom<TokenTree> for Ident {
 
 impl Parse for Ident {
     fn parse(input: ParseStream) -> Result<Self> {
-        if let Ok(ident) = Self::try_from(input.next()?.to_owned()) {
+        let token = input.next()?;
+        if let Ok(ident) = Self::try_from(token.to_owned()) {
             Ok(ident)
         } else {
-            todo!()
+            Err(Error::new(
+                Rc::clone(&input.source),
+                ErrorKind::UnexpectedToken {
+                    expected: HashSet::from_iter(["an identifier".to_string()]),
+                    span: token.span().clone(),
+                },
+            ))
         }
     }
 }
@@ -482,3 +502,66 @@ impl Punct for Space4 {
 }
 
 impl WhiteSpace for Space4 {}
+
+/// Generate types for keywords.
+///
+/// ## Usage
+/// ```
+/// use flexi_parse::parse_string;
+/// mod kw {
+///     use flexi_parse::keywords;
+///     keywords!["let", "if"];
+/// }
+///
+/// # fn main() {
+/// let kw1: kw::keyword_let = parse_string("let".to_string()).unwrap();
+/// let kw2: kw::keyword_if = parse_string("if".to_string()).unwrap();
+/// # }
+/// ```
+#[macro_export]
+macro_rules! keywords {
+    [ $( $kw:tt ),+ ] => {
+        $(
+            $crate::token::concat_idents!(struct_name = keyword_, $kw {
+                #[derive(Debug, Clone)]
+                #[allow(non_camel_case_types)]
+                pub struct struct_name($crate::Span);
+
+                impl $crate::Parse for struct_name {
+                    fn parse(input: $crate::ParseStream<'_>) -> $crate::Result<Self> {
+                        let ident: $crate::token::Ident = input.parse()?;
+                        if ident.string() == $kw {
+                            $crate::Result::Ok(Self(ident.span().clone()))
+                        } else {
+                            $crate::Result::Err($crate::error::Error::unexpected_token(
+                                ::std::collections::HashSet::from_iter([$kw.to_string()]),
+                                ident.span().clone(),
+                                ::std::rc::Rc::clone(ident.span().source()),
+                            ))
+                        }
+                    }
+                }
+
+                impl $crate::private::Sealed for struct_name {}
+
+                impl $crate::token::Token for struct_name {}
+            });
+        )+
+
+        pub fn ident(input: $crate::ParseStream<'_>) -> $crate::Result<$crate::token::Ident> {
+            use $crate::token::Ident;
+            let ident: Ident = input.parse()?;
+            if [$( $kw ),+].contains(&ident.string().as_str()) {
+                $crate::Result::Ok(ident)
+            } else {
+                $crate::Result::Err($crate::error::Error::unexpected_token(
+                    ::std::collections::HashSet::from_iter(["an identifier".to_string()]),
+                    ident.span().clone(),
+                    ::std::rc::Rc::clone(ident.span().source()),
+                ))
+            }
+        }
+    };
+}
+
+pub use keywords;
