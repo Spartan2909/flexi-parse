@@ -86,7 +86,7 @@ impl Scanner {
                 let start = self.current;
                 loop {
                     let c = self.peek(0);
-                    if c.is_ok() && c.unwrap().is_digit(10) {
+                    if c.is_ok_and(|c| c.is_ascii_digit()) {
                         self.current += 1;
                     } else {
                         break;

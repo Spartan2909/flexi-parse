@@ -50,7 +50,7 @@ fn tree_to_trees(token: TokenTree2) -> Vec<TokenTree> {
                     kind: start.try_into().unwrap(),
                     spacing: Spacing::Alone,
                     span: span.clone(),
-                }))
+                }));
             }
             for token in group.stream() {
                 tokens.append(&mut tree_to_trees(token));
@@ -60,7 +60,7 @@ fn tree_to_trees(token: TokenTree2) -> Vec<TokenTree> {
                     kind: end.try_into().unwrap(),
                     spacing: Spacing::Alone,
                     span: span.clone(),
-                }))
+                }));
             }
         }
         TokenTree2::Ident(ident) => {

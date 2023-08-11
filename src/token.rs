@@ -356,7 +356,7 @@ impl Token for LitFloat {
     }
 
     fn set_span(&mut self, span: Span) {
-        self.span = span
+        self.span = span;
     }
 }
 

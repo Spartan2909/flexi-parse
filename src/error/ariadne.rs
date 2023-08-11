@@ -105,10 +105,10 @@ impl From<&SingleError> for Report {
             ErrorKind::UnexpectedToken { expected, span } => {
                 builder.set_message("Unexpected token");
                 let message = if expected.len() == 1 {
-                    format!("Expected {}", expected.into_iter().next().unwrap())
+                    format!("Expected {}", expected.iter().next().unwrap())
                 } else {
                     let mut message = "Expected one of ".to_string();
-                    for (i, token) in expected.into_iter().enumerate() {
+                    for (i, token) in expected.iter().enumerate() {
                         message.push_str(token);
                         if i + 1 < expected.len() {
                             message.push_str(", ");

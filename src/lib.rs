@@ -115,7 +115,7 @@ pub fn parse_source<T: Parse>(source: Rc<SourceFile>) -> Result<T> {
     let (tokens, error) = scanner::scan(source);
     parse(tokens).map_err(|mut err| {
         if let Some(error) = error {
-            err.add(error)
+            err.add(error);
         }
         err
     })
@@ -231,7 +231,7 @@ impl<'a> ParseBuffer<'a> {
         let mut error = false;
         while let (TokenTree::Error(_), cursor) = self.cursor.get().next() {
             self.cursor.set(cursor);
-            error = true
+            error = true;
         }
         if error {
             Err(Error::new(Rc::clone(&self.source), ErrorKind::Silent))
