@@ -147,11 +147,10 @@ impl<D: Delimiter> Parse for Group<D> {
         let end = input
             .current()
             .map_err(|mut err| {
-                err.eof_to_group(Span::new(
-                    group_start,
-                    end_of_last_token,
-                    Rc::clone(&input.source),
-                ));
+                err.eof_to_group(
+                    Span::new(group_start, end_of_last_token, Rc::clone(&input.source)),
+                    D::Start::display(),
+                );
                 err
             })?
             .0;
@@ -268,7 +267,7 @@ impl PartialEq for LitChar {
 impl Parse for LitChar {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let group: Group<SingleQuotes> = input.parse().map_err(|mut err| {
-            err.group_to_string();
+            err.group_to_char();
             err
         })?;
         let span = group.span;

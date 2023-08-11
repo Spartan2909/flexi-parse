@@ -34,12 +34,12 @@ impl From<&ErrorKind> for ReportKind<'static> {
         match value {
             ErrorKind::Silent
             | ErrorKind::UnknownCharacter(_)
+            | ErrorKind::UnterminatedGroup { .. }
             | ErrorKind::UnterminatedChar(_)
             | ErrorKind::LongChar(_)
-            | ErrorKind::UnterminatedGroup(_)
+            | ErrorKind::UnterminatedString(_)
             | ErrorKind::UnexpectedToken { .. }
-            | ErrorKind::EndOfFile(_)
-            | ErrorKind::UnterminatedString(_) => ReportKind::Error,
+            | ErrorKind::EndOfFile(_) => ReportKind::Error,
         }
     }
 }
@@ -100,8 +100,8 @@ impl From<&SingleError> for Report {
                 builder.set_message("Unknown character");
                 builder.add_label(Label::new(span.clone()).with_color(Color::Red));
             }
-            ErrorKind::UnterminatedGroup(span) => {
-                builder.set_message("Unterminated group");
+            ErrorKind::UnterminatedGroup { start, span } => {
+                builder.set_message(format!("Unmatched '{start}'"));
                 builder.add_label(Label::new(span.clone()).with_color(Color::Red));
             }
             ErrorKind::UnterminatedChar(span) => {
