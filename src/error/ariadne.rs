@@ -35,6 +35,8 @@ impl From<&ErrorKind> for ReportKind<'static> {
             ErrorKind::Silent
             | ErrorKind::UnknownCharacter(_)
             | ErrorKind::UnterminatedChar(_)
+            | ErrorKind::LongChar(_)
+            | ErrorKind::UnterminatedGroup(_)
             | ErrorKind::UnexpectedToken { .. }
             | ErrorKind::EndOfFile(_)
             | ErrorKind::UnterminatedString(_) => ReportKind::Error,
@@ -98,8 +100,20 @@ impl From<&SingleError> for Report {
                 builder.set_message("Unknown character");
                 builder.add_label(Label::new(span.clone()).with_color(Color::Red));
             }
+            ErrorKind::UnterminatedGroup(span) => {
+                builder.set_message("Unterminated group");
+                builder.add_label(Label::new(span.clone()).with_color(Color::Red));
+            }
             ErrorKind::UnterminatedChar(span) => {
                 builder.set_message("Expect \"'\" after character literal");
+                builder.add_label(Label::new(span.clone()).with_color(Color::Red));
+            }
+            ErrorKind::LongChar(span) => {
+                builder.set_message("Character literals must be exactly one character long");
+                builder.add_label(Label::new(span.clone()).with_color(Color::Red));
+            }
+            ErrorKind::UnterminatedString(span) => {
+                builder.set_message("Expect '\"' at end of string literal");
                 builder.add_label(Label::new(span.clone()).with_color(Color::Red));
             }
             ErrorKind::UnexpectedToken { expected, span } => {
@@ -123,10 +137,6 @@ impl From<&SingleError> for Report {
                 );
             }
             ErrorKind::EndOfFile(_) => builder.set_message("Unexpected end of file while parsing"),
-            ErrorKind::UnterminatedString(span) => {
-                builder.set_message("Expect '\"' at end of string literal");
-                builder.add_label(Label::new(span.clone()).with_color(Color::Red));
-            }
         }
         Report {
             report: builder.finish(),

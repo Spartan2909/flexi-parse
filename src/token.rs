@@ -143,8 +143,20 @@ impl<D: Delimiter> Parse for Group<D> {
             }
         }
 
-        let end = input.current()?.0;
-        let group_end = input.parse::<D::End>()?.span().end;
+        let end_of_last_token = input.get_relative(-1)?.span().end;
+        let end = input
+            .current()
+            .map_err(|mut err| {
+                err.eof_to_group(Span::new(
+                    group_start,
+                    end_of_last_token,
+                    Rc::clone(&input.source),
+                ));
+                err
+            })?
+            .0;
+        let end_token: D::End = input.parse()?;
+        let group_end = end_token.span().end;
         let mut tokens = input.get_absolute_range_original(start..end)?.to_vec();
         tokens.push(TokenTree::End);
         let token_stream = TokenStream::new(tokens, Rc::clone(&input.source));
@@ -154,6 +166,133 @@ impl<D: Delimiter> Parse for Group<D> {
             span,
             _marker: PhantomData,
         })
+    }
+}
+
+impl<D: Delimiter> Sealed for Group<D> {}
+
+impl<D: Delimiter> Token for Group<D> {
+    fn span(&self) -> &Span {
+        &self.span
+    }
+
+    fn set_span(&mut self, span: Span) {
+        self.span = span;
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LitStrDoubleQuote {
+    string: String,
+    span: Span,
+}
+
+impl PartialEq for LitStrDoubleQuote {
+    fn eq(&self, other: &Self) -> bool {
+        self.string == other.string
+    }
+}
+
+impl Parse for LitStrDoubleQuote {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
+        let group: Group<DoubleQuotes> = input.parse().map_err(|mut err| {
+            err.group_to_string();
+            err
+        })?;
+        let string = group.token_stream.to_string();
+        let span = group.span;
+        Ok(LitStrDoubleQuote { string, span })
+    }
+}
+
+impl Sealed for LitStrDoubleQuote {}
+
+impl Token for LitStrDoubleQuote {
+    fn span(&self) -> &Span {
+        &self.span
+    }
+
+    fn set_span(&mut self, span: Span) {
+        self.span = span;
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LitStrSingleQuote {
+    string: String,
+    span: Span,
+}
+
+impl PartialEq for LitStrSingleQuote {
+    fn eq(&self, other: &Self) -> bool {
+        self.string == other.string
+    }
+}
+
+impl Parse for LitStrSingleQuote {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
+        let group: Group<SingleQuotes> = input.parse().map_err(|mut err| {
+            err.group_to_string();
+            err
+        })?;
+        let string = group.token_stream.to_string();
+        let span = group.span;
+        Ok(LitStrSingleQuote { string, span })
+    }
+}
+
+impl Sealed for LitStrSingleQuote {}
+
+impl Token for LitStrSingleQuote {
+    fn span(&self) -> &Span {
+        &self.span
+    }
+
+    fn set_span(&mut self, span: Span) {
+        self.span = span;
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LitChar {
+    ch: char,
+    span: Span,
+}
+
+impl PartialEq for LitChar {
+    fn eq(&self, other: &Self) -> bool {
+        self.ch == other.ch
+    }
+}
+
+impl Parse for LitChar {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
+        let group: Group<SingleQuotes> = input.parse().map_err(|mut err| {
+            err.group_to_string();
+            err
+        })?;
+        let span = group.span;
+        let string = group.token_stream.to_string();
+        if string.len() != 1 {
+            return Err(Error::new(
+                Rc::clone(&input.source),
+                ErrorKind::LongChar(span),
+            ));
+        }
+        let ch = string.chars().next().unwrap();
+        Ok(LitChar { ch, span })
+    }
+}
+
+impl Sealed for LitChar {}
+
+impl Token for LitChar {
+    fn span(&self) -> &Span {
+        &self.span
+    }
+
+    fn set_span(&mut self, span: Span) {
+        self.span = span;
     }
 }
 
@@ -289,6 +428,15 @@ impl<'a> TryFrom<&'a TokenTree> for &'a Literal {
 pub(crate) enum LiteralValue {
     Int(u64),
     Float(f64),
+}
+
+impl fmt::Display for LiteralValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LiteralValue::Int(int) => write!(f, "{int}"),
+            LiteralValue::Float(float) => write!(f, "{float}"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -451,6 +599,14 @@ macro_rules! tokens {
                 match value {
                     $( $name1 => Ok(PunctKind::$t1), )+
                     _ => Err(value),
+                }
+            }
+        }
+
+        impl From<PunctKind> for char {
+            fn from(value: PunctKind) -> char {
+                match value {
+                    $( PunctKind::$t1 => $name1, )+
                 }
             }
         }

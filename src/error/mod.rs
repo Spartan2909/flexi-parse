@@ -14,13 +14,15 @@ pub use self::ariadne::Report;
 pub(crate) enum ErrorKind {
     Silent,
     UnknownCharacter(Span),
+    UnterminatedGroup(Span),
     UnterminatedChar(Span),
+    LongChar(Span),
+    UnterminatedString(Span),
     UnexpectedToken {
         expected: HashSet<String>,
         span: Span,
     },
     EndOfFile(usize),
-    UnterminatedString(Span),
 }
 
 impl ErrorKind {
@@ -34,7 +36,9 @@ impl ErrorKind {
         match self {
             ErrorKind::Silent => panic!("called `start` on `ErrorKind::Silent`"),
             ErrorKind::UnknownCharacter(span)
+            | ErrorKind::UnterminatedGroup(span)
             | ErrorKind::UnterminatedChar(span)
+            | ErrorKind::LongChar(span)
             | ErrorKind::UnterminatedString(span)
             | ErrorKind::UnexpectedToken { span, .. } => span.start,
             ErrorKind::EndOfFile(n) => *n,
@@ -67,6 +71,23 @@ impl Error {
 
     pub(crate) fn is_empty(&self) -> bool {
         self.errors.is_empty()
+    }
+
+    pub(crate) fn eof_to_group(&mut self, span: Span) {
+        for error in &mut self.errors {
+            if let ErrorKind::EndOfFile(_) = error.kind {
+                error.kind = ErrorKind::UnterminatedGroup(span.clone());
+            }
+        }
+    }
+
+    pub(crate) fn group_to_string(&mut self) {
+        for error in &mut self.errors {
+            if let ErrorKind::UnterminatedGroup(span) = &error.kind {
+                let span = span.to_owned();
+                error.kind = ErrorKind::UnterminatedString(span);
+            }
+        }
     }
 
     pub fn add(&mut self, mut other: Error) {

@@ -20,6 +20,7 @@ use std::result;
 
 pub mod error;
 mod scanner;
+mod to_string;
 pub mod token;
 use error::Error;
 use error::ErrorKind;
@@ -86,6 +87,19 @@ pub struct Span {
 impl Span {
     fn new(start: usize, end: usize, source: Rc<SourceFile>) -> Span {
         Span { start, end, source }
+    }
+
+    fn dummy() -> Span {
+        const DUMMY_FILE: SourceFile = SourceFile {
+            name: String::new(),
+            path: None,
+            contents: String::new(),
+        };
+        Span {
+            start: 0,
+            end: 0,
+            source: Rc::new(DUMMY_FILE),
+        }
     }
 
     #[doc(hidden)]
@@ -190,7 +204,6 @@ impl TokenStream {
 ///
 /// This struct is unstable, and should only be used through the stable alias
 /// [`ParseStream`].
-#[derive(Clone)]
 pub struct ParseBuffer<'a> {
     // Instead of Cell<Cursor<'a>> so that ParseBuffer<'a> is covariant in 'a.
     cursor: Cell<Cursor<'static>>,
