@@ -80,7 +80,7 @@ fn tree_to_trees(token: TokenTree2) -> Vec<TokenTree> {
                 .0
                 .tokens
                 .into_iter()
-                .map(|mut token| {
+                .map(|(_, mut token)| {
                     token.set_span(span.clone());
                     token
                 }),
@@ -116,6 +116,6 @@ impl From<TokenStream2> for TokenStream {
             token.set_span(span.clone());
         }
         tokens.push(TokenTree::End);
-        TokenStream { tokens, source }
+        TokenStream::new(tokens, source)
     }
 }

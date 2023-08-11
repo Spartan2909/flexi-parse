@@ -1,5 +1,5 @@
-use crate::Punct;
 use crate::parse;
+use crate::Punct;
 
 use super::scan;
 

@@ -17,7 +17,6 @@ use std::ops::Range;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::result;
-use std::slice;
 
 pub mod error;
 mod scanner;
@@ -147,11 +146,20 @@ pub fn pretty_unwrap<T>(result: Result<T>) -> T {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TokenStream {
-    tokens: Vec<TokenTree>,
+    original_tokens: Vec<TokenTree>,
+    tokens: Vec<(usize, TokenTree)>,
     source: Rc<SourceFile>,
 }
 
 impl TokenStream {
+    fn new(tokens: Vec<TokenTree>, source: Rc<SourceFile>) -> TokenStream {
+        TokenStream {
+            original_tokens: tokens.clone(),
+            tokens: tokens.into_iter().enumerate().collect(),
+            source,
+        }
+    }
+
     pub fn filter<F: FnMut(&TokenStream) -> Vec<usize>>(&mut self, mut function: F) {
         let mut indices = function(self);
         indices.sort_unstable();
@@ -164,7 +172,7 @@ impl TokenStream {
     pub fn skip_whitespace(&mut self) {
         self.filter(|tokens| {
             let mut indices = vec![];
-            for (index, token) in tokens.tokens.iter().enumerate() {
+            for (index, (_, token)) in tokens.tokens.iter().enumerate() {
                 if let TokenTree::Punct(punct) = token {
                     if matches!(&punct.kind, PunctKind::Space)
                         || matches!(&punct.kind, PunctKind::NewLine)
@@ -254,7 +262,7 @@ impl<'a> ParseBuffer<'a> {
         }
     }
 
-    fn current(&self) -> Result<&'a TokenTree> {
+    fn current(&self) -> Result<&'a (usize, TokenTree)> {
         self.report_error_tokens()?;
         if self.cursor.get().eof() {
             Err(Error::new(
@@ -273,10 +281,10 @@ impl<'a> ParseBuffer<'a> {
         ))
     }
 
-    fn get_absolute_range(&self, range: Range<usize>) -> Result<&'a [TokenTree]> {
+    fn get_absolute_range_original(&self, range: Range<usize>) -> Result<&'a [TokenTree]> {
         self.cursor
             .get()
-            .get_absolute_range(range)
+            .get_absolute_range_original(range)
             .ok_or(Error::new(
                 Rc::clone(&self.source),
                 ErrorKind::EndOfFile(self.source.contents.len()),
@@ -287,6 +295,7 @@ impl<'a> ParseBuffer<'a> {
 impl<'a> From<&'a TokenStream> for ParseBuffer<'a> {
     fn from(value: &'a TokenStream) -> Self {
         let cursor = Cursor {
+            stream: value.original_tokens.as_slice(),
             start: &value.tokens[0],
             ptr: &value.tokens[0],
             end: value.tokens.last().unwrap(),
@@ -302,9 +311,10 @@ pub type ParseStream<'a> = &'a ParseBuffer<'a>;
 
 #[derive(Debug, Clone, Copy)]
 struct Cursor<'a> {
-    start: *const TokenTree,
-    ptr: *const TokenTree,
-    end: *const TokenTree,
+    stream: *const [TokenTree],
+    start: *const (usize, TokenTree),
+    ptr: *const (usize, TokenTree),
+    end: *const (usize, TokenTree),
     _marker: PhantomData<&'a TokenTree>,
 }
 
@@ -318,6 +328,7 @@ impl<'a> Cursor<'a> {
             // SAFETY: Must be upheld by caller.
             let ptr = unsafe { self.ptr.add(1) };
             Cursor {
+                stream: self.stream,
                 start: self.start,
                 ptr,
                 end: self.end,
@@ -326,7 +337,7 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    fn current(self) -> &'a TokenTree {
+    fn current(self) -> &'a (usize, TokenTree) {
         // SAFETY: `ptr` is valid for 'a.
         unsafe { &*self.ptr }
     }
@@ -337,7 +348,7 @@ impl<'a> Cursor<'a> {
 
     fn next(self) -> (&'a TokenTree, Cursor<'a>) {
         // SAFETY: `ptr` is valid for 'a.
-        let token_tree = unsafe { &*self.ptr };
+        let (_, token_tree) = unsafe { &*self.ptr };
         // SAFETY: Guaranteed by condition.
         let cursor = unsafe { self.bump() };
         (token_tree, cursor)
@@ -354,18 +365,13 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    fn get_absolute_range(self, range: Range<usize>) -> Option<&'a [TokenTree]> {
-        let start_ptr = self.start as usize + range.start;
-        let end_ptr = self.start as usize + range.end;
-        if start_ptr < self.end as usize && end_ptr < self.end as usize {
-            // SAFETY: `ptr` is guaranteed by condition to be in range
-            let ptr = unsafe { self.start.add(range.start) };
-            // SAFETY: `ptr` is live for 'a and is guaranteed by condition
-            // to be valid.
-            Some(unsafe { slice::from_raw_parts(ptr, range.end - range.start) })
-        } else {
-            None
-        }
+    fn stream(&self) -> &'a [TokenTree] {
+        // SAFETY: `stream` is live for 'a
+        unsafe { &*self.stream }
+    }
+
+    fn get_absolute_range_original(self, range: Range<usize>) -> Option<&'a [TokenTree]> {
+        self.stream().get(range)
     }
 }
 
@@ -421,14 +427,14 @@ impl From<Literal> for TokenTree {
 pub type Result<T> = result::Result<T, Error>;
 
 /// A macro to get the type of a punctuation token.
-/// 
+///
 /// To avoid ambiguity, whitespace tokens are not available through this this
 /// macro. Instead, use them directly, such as in `token::Space4`.
-/// 
+///
 /// If the punctuation you want is not recognised by this macro, split it into
 /// its constituent parts, e.g. `Punct!["£", "$"]` for `£$` or
 /// `Punct!["++", "-"]` for `++-`.
-/// 
+///
 /// Note that unlike [`syn::Token`], this macro accepts the token as a quoted
 /// string. This allows tokens not recognised by the Rust scanner to be
 /// accessed with this macro.

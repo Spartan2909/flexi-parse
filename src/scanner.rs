@@ -60,13 +60,7 @@ impl Scanner {
             Some(self.errors)
         };
 
-        (
-            TokenStream {
-                tokens,
-                source: self.source,
-            },
-            errors,
-        )
+        (TokenStream::new(tokens, self.source), errors)
     }
 
     fn scan_token(&mut self) -> Result<TokenTree, Error> {

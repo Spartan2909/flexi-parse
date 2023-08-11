@@ -27,10 +27,15 @@ pub trait Token: Parse + Sealed {
 
 impl<T: Token> Parse for Option<T> {
     fn parse(input: ParseStream) -> Result<Self> {
-        match input.try_parse() {
+        let _ = dbg!(input.current());
+        dbg!(input.cursor.get());
+        let result = match input.try_parse() {
             Ok(value) => Ok(Some(value)),
             Err(_) => Ok(None),
-        }
+        };
+        let _ = dbg!(input.current());
+        dbg!(input.cursor.get());
+        result
     }
 }
 
@@ -44,6 +49,7 @@ pub trait WhiteSpace: Punct {}
 pub trait Delimiter {
     type Start: Punct;
     type End: Punct;
+    const CAN_NEST: bool;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -52,6 +58,7 @@ pub struct Parenthesis;
 impl Delimiter for Parenthesis {
     type Start = LeftParen;
     type End = RightParen;
+    const CAN_NEST: bool = true;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -60,6 +67,7 @@ pub struct Brackets;
 impl Delimiter for Brackets {
     type Start = LeftBracket;
     type End = RightBracket;
+    const CAN_NEST: bool = true;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -68,6 +76,7 @@ pub struct Braces;
 impl Delimiter for Braces {
     type Start = LeftBrace;
     type End = RightBrace;
+    const CAN_NEST: bool = true;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -76,6 +85,7 @@ pub struct AngleBrackets;
 impl Delimiter for AngleBrackets {
     type Start = LAngle;
     type End = RAngle;
+    const CAN_NEST: bool = true;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -84,6 +94,7 @@ pub struct SingleQuotes;
 impl Delimiter for SingleQuotes {
     type Start = SingleQuote;
     type End = SingleQuote;
+    const CAN_NEST: bool = false;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -92,6 +103,7 @@ pub struct DoubleQuotes;
 impl Delimiter for DoubleQuotes {
     type Start = DoubleQuote;
     type End = DoubleQuote;
+    const CAN_NEST: bool = false;
 }
 
 #[derive(Debug, Clone)]
@@ -109,22 +121,37 @@ impl<D: Delimiter> Group<D> {
 
 impl<D: Delimiter> Parse for Group<D> {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let start_span = input.parse::<D::Start>()?.span().clone();
-        let group_start = start_span.start;
-        let contents_start = start_span.end;
-        while !input.peek::<D::End>() {
-            input.next()?;
+        let group_start = input.parse::<D::Start>()?.span().start;
+        let start = input.current()?.0;
+
+        if D::CAN_NEST {
+            let mut open = 1;
+            loop {
+                if input.peek::<D::End>() {
+                    open -= 1;
+                    if open == 0 {
+                        break;
+                    } else {
+                        input.next()?;
+                    }
+                } else if input.peek::<D::Start>() {
+                    open += 1;
+                    input.next()?;
+                } else {
+                    input.next()?;
+                }
+            }
+        } else {
+            while !input.peek::<D::End>() {
+                input.next()?;
+            }
         }
-        let end_span = input.parse::<D::End>()?.span().clone();
-        let contents_end = end_span.start;
-        let group_end = end_span.end;
-        let tokens = input
-            .get_absolute_range(contents_start..contents_end)?
-            .to_vec();
-        let token_stream = TokenStream {
-            tokens,
-            source: Rc::clone(&input.source),
-        };
+
+        let end = input.current()?.0;
+        let group_end = input.parse::<D::End>()?.span().end;
+        let mut tokens = input.get_absolute_range_original(start..end)?.to_vec();
+        tokens.push(TokenTree::End);
+        let token_stream = TokenStream::new(tokens, Rc::clone(&input.source));
         let span = Span::new(group_start, group_end, Rc::clone(&input.source));
         Ok(Group {
             token_stream,
@@ -443,7 +470,7 @@ macro_rules! tokens {
                 }
 
                 fn from_tokens_impl(input: ParseStream<'_>) -> Result<Self> {
-                    if let TokenTree::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()? {
+                    if let TokenTree::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()?.1 {
 
                     } else {
                         return Err(Error::empty());
@@ -457,7 +484,7 @@ macro_rules! tokens {
 
             impl Parse for $t2 {
                 fn parse(input: ParseStream<'_>) -> Result<Self> {
-                    let span = input.current()?.span();
+                    let span = input.current()?.1.span();
                     Self::from_tokens_impl(input).map_err(|_| {
                         Error::new(Rc::clone(&input.source), ErrorKind::UnexpectedToken {
                             expected: HashSet::from_iter(vec![format!("'{}'", $name2)]),
@@ -503,12 +530,12 @@ macro_rules! tokens {
                 }
 
                 fn from_tokens_impl(input: ParseStream<'_>) -> Result<Self> {
-                    if let TokenTree::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()? {
+                    if let TokenTree::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()?.1 {
 
                     } else {
                         return Err(Error::empty());
                     }
-                    if let TokenTree::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()? {
+                    if let TokenTree::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()?.1 {
 
                     } else {
                         return Err(Error::empty());
@@ -522,7 +549,7 @@ macro_rules! tokens {
 
             impl Parse for $t3 {
                 fn parse(input: ParseStream<'_>) -> Result<Self> {
-                    let span = input.current()?.span();
+                    let span = input.current()?.1.span();
                     Self::from_tokens_impl(input).map_err(|_| {
                         Error::new(Rc::clone(&input.source), ErrorKind::UnexpectedToken {
                             expected: HashSet::from_iter(vec![format!("'{}'", $name3)]),
@@ -671,7 +698,7 @@ fn parse_joint_impl<T1: Punct, T2: Punct>(input: ParseStream<'_>) -> Result<(T1,
 
 impl<T1: Punct, T2: Punct> Parse for (T1, T2) {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let span = input.current()?.span();
+        let span = input.current()?.1.span();
         let mut tuple: (T1, T2) = parse_joint_impl(input).map_err(|_| {
             Error::new(
                 Rc::clone(&input.source),
