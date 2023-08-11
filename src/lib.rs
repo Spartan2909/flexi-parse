@@ -404,6 +404,16 @@ impl TokenTree {
             TokenTree::End => {}
         }
     }
+
+    fn is_space(&self) -> bool {
+        matches!(
+            self,
+            TokenTree::Punct(SingleCharPunct {
+                kind: PunctKind::Space,
+                ..
+            })
+        )
+    }
 }
 
 impl From<Ident> for TokenTree {
