@@ -52,6 +52,40 @@ impl Scanner {
             }
         }
 
+        let mut to_remove = vec![];
+        let mut i = 0;
+        while i < tokens.len() {
+            if tokens[i].is_space() {
+                if tokens[i + 1].is_space() {
+                    i += 2;
+                    while tokens[i].is_space() {
+                        i += 1;
+                    }
+                } else {
+                    to_remove.push(i);
+                    i += 1;
+                }
+            } else {
+                i += 1;
+            }
+        }
+        to_remove.reverse();
+        for index in to_remove {
+            tokens.remove(index);
+        }
+        let mut set = false;
+        for token in tokens.iter_mut().rev() {
+            if let TokenTree::Punct(punct) = token {
+                if set {
+                    punct.spacing = Spacing::Joint;
+                } else {
+                    set = true;
+                }
+            } else {
+                set = false;
+            }
+        }
+
         tokens.push(TokenTree::End);
 
         let errors = if self.errors.is_empty() {
@@ -67,7 +101,7 @@ impl Scanner {
         let token = match self.peek(0)? {
             c if PunctKind::try_from(c).is_ok() => {
                 let kind = c.try_into().unwrap();
-                let spacing = Spacing::from(self.peek(1));
+                let spacing = Spacing::Alone;
                 let span = Span::new(self.current, self.current + 1, Rc::clone(&self.source));
                 self.current += 1;
                 TokenTree::Punct(SingleCharPunct {
