@@ -73,16 +73,17 @@ impl Scanner {
         for index in to_remove {
             tokens.remove(index);
         }
-        let mut set = false;
+
+        let mut punct_joint = false;
         for token in tokens.iter_mut().rev() {
             if let TokenTree::Punct(punct) = token {
-                if set {
+                if punct_joint {
                     punct.spacing = Spacing::Joint;
                 } else {
-                    set = true;
+                    punct_joint = true;
                 }
             } else {
-                set = false;
+                punct_joint = false;
             }
         }
 
@@ -101,12 +102,11 @@ impl Scanner {
         let token = match self.peek(0)? {
             c if PunctKind::try_from(c).is_ok() => {
                 let kind = c.try_into().unwrap();
-                let spacing = Spacing::Alone;
                 let span = Span::new(self.current, self.current + 1, Rc::clone(&self.source));
                 self.current += 1;
                 TokenTree::Punct(SingleCharPunct {
                     kind,
-                    spacing,
+                    spacing: Spacing::Alone,
                     span,
                 })
             }
