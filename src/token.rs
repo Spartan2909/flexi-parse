@@ -27,11 +27,10 @@ pub trait Token: Parse + Sealed {
 
 impl<T: Token> Parse for Option<T> {
     fn parse(input: ParseStream) -> Result<Self> {
-        let result = match input.try_parse() {
+        match input.try_parse() {
             Ok(value) => Ok(Some(value)),
             Err(_) => Ok(None),
-        };
-        result
+        }
     }
 }
 
