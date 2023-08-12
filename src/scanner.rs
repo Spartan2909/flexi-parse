@@ -1,15 +1,16 @@
-use super::error::Error;
-use super::error::ErrorKind;
-use super::token::Ident;
-use super::token::Literal;
-use super::token::LiteralValue;
-use super::token::PunctKind;
-use super::token::SingleCharPunct;
-use super::token::Spacing;
-use super::SourceFile;
-use super::Span;
-use super::TokenStream;
-use super::TokenTree;
+use crate::error::Error;
+use crate::error::ErrorKind;
+use crate::token::Ident;
+use crate::token::Literal;
+use crate::token::LiteralValue;
+use crate::token::PunctKind;
+use crate::token::SingleCharPunct;
+use crate::token::Spacing;
+use crate::Result;
+use crate::SourceFile;
+use crate::Span;
+use crate::TokenStream;
+use crate::TokenTree;
 
 use std::rc::Rc;
 
@@ -21,7 +22,7 @@ fn valid_ident_char(c: Option<char>) -> bool {
     }
 }
 
-fn compare_result<T: PartialEq, E>(l: Result<T, E>, r: T) -> bool {
+fn compare_result<T: PartialEq>(l: Result<T>, r: T) -> bool {
     if let Ok(l) = l {
         l == r
     } else {
@@ -98,7 +99,7 @@ impl Scanner {
         (TokenStream::new(tokens, self.source), errors)
     }
 
-    fn scan_token(&mut self) -> Result<TokenTree, Error> {
+    fn scan_token(&mut self) -> Result<TokenTree> {
         let token = match self.peek(0)? {
             c if PunctKind::try_from(c).is_ok() => {
                 let kind = c.try_into().unwrap();
@@ -160,7 +161,7 @@ impl Scanner {
         Ok(token)
     }
 
-    fn peek(&mut self, offset: usize) -> Result<char, Error> {
+    fn peek(&mut self, offset: usize) -> Result<char> {
         if self.current + offset >= self.source.contents.len() {
             Err(Error::new(
                 Rc::clone(&self.source),
