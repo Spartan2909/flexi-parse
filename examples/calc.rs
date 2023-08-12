@@ -12,13 +12,10 @@ use flexi_parse::Result;
 #[derive(Debug, Clone)]
 enum Expr {
     Num(f64),
-
     Neg(Box<Expr>),
-
     Mul(Box<Expr>, Box<Expr>),
     Div(Box<Expr>, Box<Expr>),
     Mod(Box<Expr>, Box<Expr>),
-
     Add(Box<Expr>, Box<Expr>),
     Sub(Box<Expr>, Box<Expr>),
 }
@@ -82,18 +79,21 @@ fn unary(input: ParseStream<'_>) -> Result<Expr> {
 }
 
 fn primary(input: ParseStream<'_>) -> Result<Expr> {
-    if let Some(f) = input.parse::<Option<token::LitFloat>>()? {
-        Ok(Expr::Num(f.value()))
-    } else if let Some(f) = input.parse::<Option<token::LitInt>>()? {
-        Ok(Expr::Num(f.value() as f64))
-    } else {
+    let lookahead = input.lookahead();
+    if lookahead.peek::<token::LitFloat>() {
+        Ok(Expr::Num(input.parse::<token::LitFloat>()?.value()))
+    } else if lookahead.peek::<token::LitInt>() {
+        Ok(Expr::Num(input.parse::<token::LitInt>()?.value() as f64))
+    } else if lookahead.peek::<token::LeftParen>() {
         let group: Group<Parenthesis> = input.parse()?;
         parse(group.token_stream())
+    } else {
+        Err(lookahead.error())
     }
 }
 
 fn main() {
-    let expr: Expr = pretty_unwrap(parse_string("(3 + 5) / 2".to_string()));
+    let expr: Expr = pretty_unwrap(parse_string("a (3 + 5) / 2".to_string()));
     println!("{}", expr.eval());
 }
 

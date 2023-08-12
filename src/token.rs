@@ -23,6 +23,9 @@ pub trait Token: Parse + Sealed {
 
     #[doc(hidden)]
     fn set_span(&mut self, span: Span);
+
+    #[doc(hidden)]
+    fn display() -> String;
 }
 
 impl<T: Token> Parse for Option<T> {
@@ -34,10 +37,7 @@ impl<T: Token> Parse for Option<T> {
     }
 }
 
-pub trait Punct: Token {
-    #[doc(hidden)]
-    fn display() -> String;
-}
+pub trait Punct: Token {}
 
 pub trait WhiteSpace: Punct {}
 
@@ -177,6 +177,10 @@ impl<D: Delimiter> Token for Group<D> {
     fn set_span(&mut self, span: Span) {
         self.span = span;
     }
+
+    fn display() -> String {
+        D::Start::display()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -213,6 +217,10 @@ impl Token for LitStrDoubleQuote {
     fn set_span(&mut self, span: Span) {
         self.span = span;
     }
+
+    fn display() -> String {
+        "a string literal".to_string()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -248,6 +256,10 @@ impl Token for LitStrSingleQuote {
 
     fn set_span(&mut self, span: Span) {
         self.span = span;
+    }
+
+    fn display() -> String {
+        "a string literal".to_string()
     }
 }
 
@@ -291,6 +303,10 @@ impl Token for LitChar {
 
     fn set_span(&mut self, span: Span) {
         self.span = span;
+    }
+
+    fn display() -> String {
+        "a character literal".to_string()
     }
 }
 
@@ -350,6 +366,10 @@ impl Token for Ident {
 
     fn set_span(&mut self, span: Span) {
         self.span = span;
+    }
+
+    fn display() -> String {
+        "an identifier".to_string()
     }
 }
 
@@ -481,6 +501,10 @@ impl Token for LitInt {
     fn set_span(&mut self, span: Span) {
         self.span = span;
     }
+
+    fn display() -> String {
+        "an integer".to_string()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -527,6 +551,10 @@ impl Token for LitFloat {
     fn set_span(&mut self, span: Span) {
         self.span = span;
     }
+
+    fn display() -> String {
+        "a floating point literal".to_string()
+    }
 }
 
 macro_rules! tokens {
@@ -570,6 +598,10 @@ macro_rules! tokens {
                 fn set_span(&mut self, span: Span) {
                     self.0 = span;
                 }
+
+                fn display() -> String {
+                    $name1.to_string()
+                }
             }
 
             impl fmt::Display for $t1 {
@@ -578,11 +610,7 @@ macro_rules! tokens {
                 }
             }
 
-            impl Punct for $t1 {
-                fn display() -> String {
-                    $name1.to_string()
-                }
-            }
+            impl Punct for $t1 {}
         )+
 
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -654,6 +682,10 @@ macro_rules! tokens {
                 fn set_span(&mut self, span: Span) {
                     self.0 = span;
                 }
+
+                fn display() -> String {
+                    $name2.to_string()
+                }
             }
 
             impl fmt::Display for $t2 {
@@ -662,11 +694,7 @@ macro_rules! tokens {
                 }
             }
 
-            impl Punct for $t2 {
-                fn display() -> String {
-                    $name2.to_string()
-                }
-            }
+            impl Punct for $t2 {}
         )+
 
         $(
@@ -719,6 +747,10 @@ macro_rules! tokens {
                 fn set_span(&mut self, span: Span) {
                     self.0 = span;
                 }
+
+                fn display() -> String {
+                    $name3.to_string()
+                }
             }
 
             impl fmt::Display for $t3 {
@@ -727,11 +759,7 @@ macro_rules! tokens {
                 }
             }
 
-            impl Punct for $t3 {
-                fn display() -> String {
-                    $name3.to_string()
-                }
-            }
+            impl Punct for $t3 {}
         )+
     };
 }
@@ -824,13 +852,13 @@ impl<T: Punct> Token for (T,) {
     fn set_span(&mut self, span: Span) {
         self.0.set_span(span);
     }
-}
 
-impl<T: Punct> Punct for (T,) {
     fn display() -> String {
         T::display()
     }
 }
+
+impl<T: Punct> Punct for (T,) {}
 
 fn parse_joint_impl<T1: Punct, T2: Punct>(input: ParseStream<'_>) -> Result<(T1, T2)> {
     let t1 = input.parse()?;
@@ -873,13 +901,13 @@ impl<T1: Punct, T2: Punct> Token for (T1, T2) {
     fn set_span(&mut self, span: Span) {
         self.0.set_span(span);
     }
-}
 
-impl<T1: Punct, T2: Punct> Punct for (T1, T2) {
     fn display() -> String {
         T1::display() + &T2::display()
     }
 }
+
+impl<T1: Punct, T2: Punct> Punct for (T1, T2) {}
 
 /// `  `
 #[derive(Debug, Clone)]
@@ -906,13 +934,13 @@ impl Token for Space2 {
     fn set_span(&mut self, span: Span) {
         self.0 = span;
     }
-}
 
-impl Punct for Space2 {
     fn display() -> String {
         "  ".to_string()
     }
 }
+
+impl Punct for Space2 {}
 
 impl WhiteSpace for Space2 {}
 
@@ -941,13 +969,13 @@ impl Token for Space4 {
     fn set_span(&mut self, span: Span) {
         self.0 = span;
     }
-}
 
-impl Punct for Space4 {
     fn display() -> String {
         "    ".to_string()
     }
 }
+
+impl Punct for Space4 {}
 
 impl WhiteSpace for Space4 {}
 
@@ -1000,6 +1028,10 @@ macro_rules! keywords {
 
                     fn set_span(&mut self, span: $crate::Span) {
                         self.0 = span;
+                    }
+
+                    fn display() -> String {
+                        $kw.to_string()
                     }
                 }
             });

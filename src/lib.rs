@@ -19,11 +19,14 @@ use std::rc::Rc;
 use std::result;
 
 pub mod error;
+pub mod lookahead;
+pub mod punctuated;
 mod scanner;
 mod to_string;
 pub mod token;
 use error::Error;
 use error::ErrorKind;
+use lookahead::Lookahead;
 use token::Ident;
 use token::Literal;
 use token::PunctKind;
@@ -229,6 +232,10 @@ impl<'a> ParseBuffer<'a> {
         function(self)
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.cursor.get().eof()
+    }
+
     fn try_parse<T: Parse>(&self) -> Result<T> {
         let cursor = self.cursor.get();
         T::parse(self).map_err(move |err| {
@@ -302,6 +309,14 @@ impl<'a> ParseBuffer<'a> {
                 Rc::clone(&self.source),
                 ErrorKind::EndOfFile(self.source.contents.len()),
             ))
+    }
+
+    fn fork(&self) -> ParseBuffer<'a> {
+        ParseBuffer::new(self.cursor.get(), Rc::clone(&self.source))
+    }
+
+    pub fn lookahead(&self) -> Lookahead<'a> {
+        Lookahead::new(self.fork())
     }
 }
 
