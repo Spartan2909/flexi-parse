@@ -59,7 +59,7 @@ impl Scanner {
             if tokens[i].is_space() {
                 if tokens[i + 1].is_space() {
                     i += 2;
-                    while tokens[i].is_space() {
+                    while tokens.get(i).is_some_and(TokenTree::is_space) {
                         i += 1;
                     }
                 } else {
