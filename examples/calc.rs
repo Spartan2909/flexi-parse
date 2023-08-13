@@ -106,8 +106,17 @@ mod tests {
     use flexi_parse::pretty_unwrap;
 
     #[test]
-    fn basic_use() {
-        let expr: Expr = pretty_unwrap(parse_string("((4 - 1) + 5) / (1.5 + 0.5)".to_string()));
-        assert_eq!(expr.eval(), 4.0);
+    fn test_features() {
+        let expr: Expr = pretty_unwrap(parse_string(
+            "
+                (
+                    (
+                        (4 - 1) + 5
+                    ) / (2.5 + -0.5) * 2
+                ) % 3
+            "
+            .to_string(),
+        ));
+        assert_eq!(expr.eval(), 2.0);
     }
 }
