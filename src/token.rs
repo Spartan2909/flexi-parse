@@ -852,8 +852,6 @@ impl<T: Punct> Token for (T,) {
     }
 }
 
-impl<T: Punct> Punct for (T,) {}
-
 trait JoinedPunct: Sized {
     fn display() -> String;
 

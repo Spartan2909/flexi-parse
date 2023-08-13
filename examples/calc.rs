@@ -9,7 +9,6 @@ use flexi_parse::ParseStream;
 use flexi_parse::Punct;
 use flexi_parse::Result;
 
-#[derive(Debug, Clone)]
 enum Expr {
     Num(f64),
     Neg(Box<Expr>),
