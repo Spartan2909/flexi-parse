@@ -643,10 +643,6 @@ macro_rules! tokens {
             pub struct $t2(Span);
 
             impl $t2 {
-                pub fn span(&self) -> &Span {
-                    &self.0
-                }
-
                 fn from_tokens_impl(input: ParseStream<'_>) -> Result<Self> {
                     if let TokenTree::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()?.1 {
 
@@ -703,10 +699,6 @@ macro_rules! tokens {
             pub struct $t3(Span);
 
             impl $t3 {
-                pub fn span(&self) -> &Span {
-                    &self.0
-                }
-
                 fn from_tokens_impl(input: ParseStream<'_>) -> Result<Self> {
                     if let TokenTree::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()?.1 {
 
@@ -802,6 +794,7 @@ tokens! {
         (NewLine, '\n', "`\\n`")
         (SingleQuote, '\'', "`'`")
         (DoubleQuote, '"', "`\"`")
+        (Tab, '\t', "`\t`")
     }
     {
         (BangEqual, Bang, Equal, "!=", "`!=`")

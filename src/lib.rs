@@ -537,6 +537,9 @@ macro_rules! Punct {
     ["/="] => { $crate::token::SlashEqual };
     ["//"] => { $crate::token::SlashSlash };
     ["//="] => { $crate::token::SlashSlashEqual };
+    ["  "] => { $crate::token::Space2 };
+    ["    "] => { $crate::token::Space4 };
+    ["\t"] => { $crate::token::Tab };
     ["~"] => { $crate::token::Tilde };
     ["¬"] => { $crate::token::Tilde2 };
     ["_"] => { $crate::token::UnderScore };
