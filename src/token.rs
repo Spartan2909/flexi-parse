@@ -3,6 +3,7 @@ use crate::error::ErrorKind;
 use crate::private::Sealed;
 use crate::Parse;
 use crate::ParseStream;
+use crate::Punct;
 use crate::Result;
 use crate::Span;
 use crate::TokenStream;
@@ -853,54 +854,70 @@ impl<T: Punct> Token for (T,) {
 
 impl<T: Punct> Punct for (T,) {}
 
-fn parse_joint_impl<T1: Punct, T2: Punct>(input: ParseStream<'_>) -> Result<(T1, T2)> {
-    let t1 = input.parse()?;
-    if let TokenTree::Punct(SingleCharPunct {
-        spacing: Spacing::Joint,
-        ..
-    }) = input.get_relative(-1)?
-    {
-    } else {
-        return Err(Error::empty());
-    }
-    let t2 = input.parse()?;
-    Ok((t1, t2))
+trait JoinedPunct: Sized {
+    fn display() -> String;
+
+    fn parse(input: ParseStream<'_>) -> Result<Self>;
 }
 
-impl<T1: Punct, T2: Punct> Parse for (T1, T2) {
+impl<T1: JoinedPunct, T2: JoinedPunct> JoinedPunct for (T1, T2) {
+    fn display() -> String {
+        T1::display() + &T2::display()
+    }
+
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
+        Ok((T1::parse(input)?, T2::parse(input)?))
+    }
+}
+
+impl<T: Punct> JoinedPunct for (T,) {
+    fn display() -> String {
+        T::display()
+    }
+
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
+        T::parse(input).map(|value| (value,))
+    }
+}
+
+impl<T: JoinedPunct> Parse for (T, Span) {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let span = input.current()?.1.span();
-        let mut tuple: (T1, T2) = parse_joint_impl(input).map_err(|_| {
+        let value = T::parse(input).map_err(|_| {
             Error::new(
                 Rc::clone(&input.source),
                 ErrorKind::UnexpectedToken {
-                    expected: HashSet::from_iter(vec![<(T1, T2)>::display()]),
+                    expected: HashSet::from_iter(vec![T::display()]),
                     span: span.clone(),
                 },
             )
         })?;
-        tuple.0.set_span(span.clone());
-        Ok(tuple)
+        let span = Span::new(
+            span.start,
+            input.get_relative(-1)?.span().end,
+            Rc::clone(&input.source),
+        );
+        Ok((value, span))
     }
 }
 
-impl<T1: Punct, T2: Punct> Sealed for (T1, T2) {}
+impl<T: JoinedPunct> Sealed for (T, Span) {}
 
-impl<T1: Punct, T2: Punct> Token for (T1, T2) {
+impl<T: JoinedPunct> Token for (T, Span) {
     fn span(&self) -> &Span {
-        self.0.span()
+        &self.1
     }
 
     fn set_span(&mut self, span: Span) {
-        self.0.set_span(span);
+        self.1 = span;
     }
 
     fn display() -> String {
-        T1::display() + &T2::display()
+        T::display()
     }
 }
 
-impl<T1: Punct, T2: Punct> Punct for (T1, T2) {}
+impl<T: JoinedPunct> Punct for (T, Span) {}
 
 /// `  `
 #[derive(Debug, Clone)]
@@ -908,12 +925,8 @@ pub struct Space2(Span);
 
 impl Parse for Space2 {
     fn parse(input: ParseStream) -> Result<Self> {
-        let (s1, s2): (Space, Space) = input.parse()?;
-        Ok(Space2(Span::new(
-            s1.span().start,
-            s2.span().end,
-            Rc::clone(&input.source),
-        )))
+        let (_, span): (((Space,), (Space,)), Span) = input.parse()?;
+        Ok(Space2(span))
     }
 }
 
@@ -943,12 +956,8 @@ pub struct Space4(Span);
 
 impl Parse for Space4 {
     fn parse(input: ParseStream) -> Result<Self> {
-        let (s1, s2): (Space2, Space2) = input.parse()?;
-        Ok(Space4(Span::new(
-            s1.0.start,
-            s2.0.end,
-            Rc::clone(&input.source),
-        )))
+        let (_, span): Punct!["  ", "  "] = input.parse()?;
+        Ok(Space4(span))
     }
 }
 
@@ -1001,11 +1010,11 @@ macro_rules! keywords {
                     fn parse(input: $crate::ParseStream<'_>) -> $crate::Result<Self> {
                         let ident: $crate::token::Ident = input.parse()?;
                         if ident.string() == $kw {
-                            $crate::Result::Ok(Self(ident.span().clone()))
+                            $crate::Result::Ok(Self(ident.span().to_owned()))
                         } else {
                             $crate::Result::Err($crate::error::Error::unexpected_token(
                                 ::std::collections::HashSet::from_iter([$kw.to_string()]),
-                                ident.span().clone(),
+                                ident.span().to_owned(),
                                 ::std::rc::Rc::clone(ident.span().source()),
                             ))
                         }
@@ -1037,7 +1046,7 @@ macro_rules! keywords {
             if [$( $kw ),+].contains(&ident.string().as_str()) {
                 $crate::Result::Err($crate::error::Error::unexpected_token(
                     ::std::collections::HashSet::from_iter(["an identifier".to_string()]),
-                    ident.span().clone(),
+                    ident.span().to_owned(),
                     ::std::rc::Rc::clone(ident.span().source()),
                 ))
             } else {

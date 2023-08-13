@@ -544,9 +544,11 @@ macro_rules! Punct {
     ["¬"] => { $crate::token::Tilde2 };
     ["_"] => { $crate::token::UnderScore };
     [$l:tt, $( $r:tt ),+] => {
-        // The trailing comma isn't ideal, but it gets rid of the
-        // `unused_parens` warning
-        ($crate::Punct![$l], ($crate::Punct![$( $r ),+],))
+        ($crate::Punct![impl $l, $( $r ),+], $crate::Span)
+    };
+    [impl $l:tt] => { ($crate::Punct![$l],) };
+    [impl $l:tt, $( $r:tt ),+] => {
+        (($crate::Punct![$l],), $crate::Punct![impl $( $r ),+])
     };
 }
 
