@@ -9,6 +9,8 @@ use flexi_parse::ParseStream;
 use flexi_parse::Punct;
 use flexi_parse::Result;
 
+use std::env;
+
 enum Expr {
     Num(f64),
     Neg(Box<Expr>),
@@ -92,7 +94,7 @@ fn primary(input: ParseStream<'_>) -> Result<Expr> {
 }
 
 fn main() {
-    let expr: Expr = pretty_unwrap(parse_string("a (3 + 5) / 2".to_string()));
+    let expr: Expr = pretty_unwrap(parse_string(env::args().nth(1).expect("expect expression")));
     println!("{}", expr.eval());
 }
 
