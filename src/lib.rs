@@ -33,7 +33,7 @@ use token::SingleCharPunct;
 use token::Token;
 use token::WhiteSpace;
 
-#[cfg(any(feature = "proc-macro2"))]
+#[cfg(feature = "proc-macro2")]
 mod proc_macro;
 
 #[derive(Debug, Clone, PartialEq)]
