@@ -115,13 +115,33 @@ pub trait Parse: Sized {
     fn parse(input: ParseStream<'_>) -> Result<Self>;
 }
 
+pub trait Parser: Sized {
+    type Output;
+
+    fn parse(self, tokens: TokenStream) -> Result<Self::Output>;
+}
+
+impl<F: FnOnce(ParseStream<'_>) -> Result<T>, T> Parser for F {
+    type Output = T;
+
+    fn parse(self, tokens: TokenStream) -> Result<Self::Output> {
+        let cursor = Cursor {
+            stream: tokens.original_tokens.as_slice(),
+            start: &tokens.tokens[0],
+            ptr: &tokens.tokens[0],
+            end: tokens.tokens.last().unwrap(),
+            _marker: PhantomData,
+        };
+        self(&ParseBuffer::new(cursor, Rc::clone(&tokens.source)))
+    }
+}
+
 /// Parses the given tokens into the syntax tree node `T`.
 ///
 /// This function ignores all whitespace.
 pub fn parse<T: Parse>(mut tokens: TokenStream) -> Result<T> {
     tokens.skip_whitespace();
-    let parse_buffer = ParseBuffer::from(&tokens);
-    parse_buffer.parse()
+    Parser::parse(T::parse, tokens)
 }
 
 /// Scans and parses the given source file into the syntax tree node `T`.
@@ -313,19 +333,6 @@ impl<'a> ParseBuffer<'a> {
 
     pub fn lookahead(&self) -> Lookahead<'a> {
         Lookahead::new(self.fork())
-    }
-}
-
-impl<'a> From<&'a TokenStream> for ParseBuffer<'a> {
-    fn from(value: &'a TokenStream) -> Self {
-        let cursor = Cursor {
-            stream: value.original_tokens.as_slice(),
-            start: &value.tokens[0],
-            ptr: &value.tokens[0],
-            end: value.tokens.last().unwrap(),
-            _marker: PhantomData,
-        };
-        ParseBuffer::new(cursor, Rc::clone(&value.source))
     }
 }
 

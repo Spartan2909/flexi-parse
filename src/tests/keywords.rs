@@ -1,4 +1,5 @@
-use crate::ParseBuffer;
+use crate::parse;
+use crate::Parser;
 
 use super::scan;
 
@@ -10,21 +11,15 @@ mod kw {
 
 #[test]
 fn keyword() {
-    ParseBuffer::from(&scan("let"))
-        .parse::<kw::keyword_let>()
-        .unwrap();
+    parse::<kw::keyword_let>(scan("let")).unwrap();
 }
 
 #[test]
 fn ident() {
-    ParseBuffer::from(&scan("not_a_keyword"))
-        .parse_with(kw::ident)
-        .unwrap();
+    Parser::parse(kw::ident, scan("not_a_keyword")).unwrap();
 }
 
 #[test]
-fn keyword_as_ident() {
-    ParseBuffer::from(&scan("let"))
-        .parse_with(kw::ident)
-        .unwrap_err();
+fn ident_fail() {
+    Parser::parse(kw::ident, scan("let")).unwrap_err();
 }
