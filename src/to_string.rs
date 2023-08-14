@@ -22,6 +22,9 @@ impl fmt::Display for TokenStream {
                 TokenTree::Literal(lit) => {
                     write!(f, "{}", &lit.value)?;
                 }
+                TokenTree::WhiteSpace(whitespace) => {
+                    write!(f, "{}", whitespace.display())?;
+                }
                 TokenTree::End => break,
             }
             for _ in last_token_end..this_token_span.start {

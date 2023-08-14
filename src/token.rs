@@ -3,7 +3,6 @@ use crate::error::ErrorKind;
 use crate::private::Sealed;
 use crate::Parse;
 use crate::ParseStream;
-use crate::Punct;
 use crate::Result;
 use crate::Span;
 use crate::TokenStream;
@@ -39,8 +38,6 @@ impl<T: Token> Parse for Option<T> {
 }
 
 pub trait Punct: Token {}
-
-pub trait WhiteSpace: Punct {}
 
 pub trait Delimiter {
     type Start: Punct;
@@ -790,12 +787,9 @@ tokens! {
         (Hash, '#', "`#`")
         (Pound, '£', "`£`")
         (Dollar, '$', "`$`")
-        (Space, ' ', "` `")
         (UnderScore, '_', "`_`")
-        (NewLine, '\n', "`\\n`")
         (SingleQuote, '\'', "`'`")
         (DoubleQuote, '"', "`\"`")
-        (Tab, '\t', "`\t`")
     }
     {
         (BangEqual, Bang, Equal, "!=", "`!=`")
@@ -827,8 +821,6 @@ tokens! {
         (ColonColonEqual, Colon, Colon, Equal, "::=", "`::=`")
     }
 }
-
-impl WhiteSpace for Space {}
 
 impl<T: Punct> Parse for (T,) {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
@@ -917,14 +909,74 @@ impl<T: JoinedPunct> Token for (T, Span) {
 
 impl<T: JoinedPunct> Punct for (T, Span) {}
 
+#[derive(Debug, Clone)]
+pub(crate) enum WhiteSpace {
+    Space2(Space2),
+    Space4(Space4),
+    Tab(Tab),
+    NewLine(NewLine),
+}
+
+impl WhiteSpace {
+    pub(crate) fn span(&self) -> &Span {
+        match self {
+            WhiteSpace::Space2(Space2(span))
+            | WhiteSpace::Space4(Space4(span))
+            | WhiteSpace::Tab(Tab(span))
+            | WhiteSpace::NewLine(NewLine(span)) => span,
+        }
+    }
+
+    pub(crate) fn set_span(&mut self, span: Span) {
+        match self {
+            WhiteSpace::Space2(Space2(original_span))
+            | WhiteSpace::Space4(Space4(original_span))
+            | WhiteSpace::Tab(Tab(original_span))
+            | WhiteSpace::NewLine(NewLine(original_span)) => *original_span = span,
+        }
+    }
+
+    pub(crate) fn display(&self) -> String {
+        match self {
+            WhiteSpace::Space2(_) => Space2::display(),
+            WhiteSpace::Space4(_) => Space4::display(),
+            WhiteSpace::Tab(_) => Tab::display(),
+            WhiteSpace::NewLine(_) => NewLine::display(),
+        }
+    }
+}
+
+impl PartialEq for WhiteSpace {
+    fn eq(&self, other: &Self) -> bool {
+        matches!(
+            (self, other),
+            (WhiteSpace::Space2(_), WhiteSpace::Space2(_))
+                | (WhiteSpace::Space4(_), WhiteSpace::Space4(_))
+                | (WhiteSpace::Tab(_), WhiteSpace::Tab(_))
+        )
+    }
+}
+
+/// ` `
+#[derive(Debug, Clone)]
+pub struct Space(Span);
+
 /// `  `
 #[derive(Debug, Clone)]
-pub struct Space2(Span);
+pub struct Space2(pub(crate) Span);
 
 impl Parse for Space2 {
     fn parse(input: ParseStream) -> Result<Self> {
-        let (_, span): (((Space,), (Space,)), Span) = input.parse()?;
-        Ok(Space2(span))
+        let token = input.next()?;
+        if let TokenTree::WhiteSpace(WhiteSpace::Space2(value)) = token {
+            Ok(value.clone())
+        } else {
+            Err(Error::unexpected_token(
+                HashSet::from_iter(["a two-space tab".to_string()]),
+                token.span().clone(),
+                Rc::clone(&input.source),
+            ))
+        }
     }
 }
 
@@ -944,21 +996,24 @@ impl Token for Space2 {
     }
 }
 
-impl Punct for Space2 {}
-
-impl WhiteSpace for Space2 {}
-
 /// `    `
 #[derive(Debug, Clone)]
-pub struct Space4(Span);
+pub struct Space4(pub(crate) Span);
 
 impl Parse for Space4 {
     fn parse(input: ParseStream) -> Result<Self> {
-        let (_, span): Punct!["  ", "  "] = input.parse()?;
-        Ok(Space4(span))
+        let token = input.next()?;
+        if let TokenTree::WhiteSpace(WhiteSpace::Space4(value)) = token {
+            Ok(value.clone())
+        } else {
+            Err(Error::unexpected_token(
+                HashSet::from_iter(["a four-space tab".to_string()]),
+                token.span().clone(),
+                Rc::clone(&input.source),
+            ))
+        }
     }
 }
-
 impl Sealed for Space4 {}
 
 impl Token for Space4 {
@@ -975,9 +1030,76 @@ impl Token for Space4 {
     }
 }
 
-impl Punct for Space4 {}
+#[allow(clippy::tabs_in_doc_comments)]
+/// `	`
+#[derive(Debug, Clone)]
+pub struct Tab(pub(crate) Span);
 
-impl WhiteSpace for Space4 {}
+impl Parse for Tab {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let token = input.next()?;
+        if let TokenTree::WhiteSpace(WhiteSpace::Tab(value)) = token {
+            Ok(value.clone())
+        } else {
+            Err(Error::unexpected_token(
+                HashSet::from_iter(["a tab".to_string()]),
+                token.span().clone(),
+                Rc::clone(&input.source),
+            ))
+        }
+    }
+}
+
+impl Sealed for Tab {}
+
+impl Token for Tab {
+    fn span(&self) -> &Span {
+        &self.0
+    }
+
+    fn set_span(&mut self, span: Span) {
+        self.0 = span;
+    }
+
+    fn display() -> String {
+        "\t".to_string()
+    }
+}
+
+/// `\n`
+#[derive(Debug, Clone)]
+pub struct NewLine(pub(crate) Span);
+
+impl Parse for NewLine {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let token = input.next()?;
+        if let TokenTree::WhiteSpace(WhiteSpace::NewLine(value)) = token {
+            Ok(value.clone())
+        } else {
+            Err(Error::unexpected_token(
+                HashSet::from_iter(["\\n".to_string()]),
+                token.span().clone(),
+                Rc::clone(&input.source),
+            ))
+        }
+    }
+}
+
+impl Sealed for NewLine {}
+
+impl Token for NewLine {
+    fn span(&self) -> &Span {
+        &self.0
+    }
+
+    fn set_span(&mut self, span: Span) {
+        self.0 = span;
+    }
+
+    fn display() -> String {
+        "\\n".to_string()
+    }
+}
 
 /// Generate types for keywords.
 ///

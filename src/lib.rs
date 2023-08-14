@@ -29,9 +29,9 @@ use error::ErrorKind;
 use lookahead::Lookahead;
 use token::Ident;
 use token::Literal;
-use token::PunctKind;
 use token::SingleCharPunct;
 use token::Token;
+use token::WhiteSpace;
 
 #[cfg(any(feature = "proc-macro", feature = "proc-macro2"))]
 mod proc_macro;
@@ -190,12 +190,8 @@ impl TokenStream {
         self.filter(|tokens| {
             let mut indices = vec![];
             for (index, (_, token)) in tokens.tokens.iter().enumerate() {
-                if let TokenTree::Punct(punct) = token {
-                    if matches!(&punct.kind, PunctKind::Space)
-                        || matches!(&punct.kind, PunctKind::NewLine)
-                    {
-                        indices.push(index);
-                    }
+                if let TokenTree::WhiteSpace(_) = token {
+                    indices.push(index);
                 }
             }
             indices
@@ -409,6 +405,7 @@ enum TokenTree {
     Ident(Ident),
     Punct(SingleCharPunct),
     Literal(Literal),
+    WhiteSpace(WhiteSpace),
     End,
 }
 
@@ -419,6 +416,7 @@ impl TokenTree {
             TokenTree::Ident(ident) => &ident.span,
             TokenTree::Punct(punct) => &punct.span,
             TokenTree::Literal(literal) => &literal.span,
+            TokenTree::WhiteSpace(whitespace) => whitespace.span(),
             TokenTree::End => panic!("called `span` on `TokenTree::End`"),
         }
     }
@@ -429,18 +427,9 @@ impl TokenTree {
             TokenTree::Ident(ident) => ident.span = span,
             TokenTree::Punct(punct) => punct.span = span,
             TokenTree::Literal(literal) => literal.span = span,
+            TokenTree::WhiteSpace(whitespace) => whitespace.set_span(span),
             TokenTree::End => {}
         }
-    }
-
-    fn is_space(&self) -> bool {
-        matches!(
-            self,
-            TokenTree::Punct(SingleCharPunct {
-                kind: PunctKind::Space,
-                ..
-            })
-        )
     }
 }
 

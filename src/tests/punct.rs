@@ -7,3 +7,8 @@ use super::scan;
 fn multi_part_punct() {
     parse::<Punct!["++", "-", "$"]>(scan("++-$")).unwrap();
 }
+
+#[test]
+fn joint_punct_fail() {
+    parse::<Punct!["+="]>(dbg!(scan("+ ="))).unwrap_err();
+}

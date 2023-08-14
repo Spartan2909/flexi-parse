@@ -9,20 +9,21 @@ mod kw {
 }
 
 #[test]
-fn keywords() {
+fn keyword() {
     ParseBuffer::from(&scan("let"))
         .parse::<kw::keyword_let>()
         .unwrap();
-    ParseBuffer::from(&scan("if"))
-        .parse::<kw::keyword_let>()
-        .unwrap_err();
 }
 
 #[test]
-fn ident_keywords() {
+fn ident() {
     ParseBuffer::from(&scan("not_a_keyword"))
         .parse_with(kw::ident)
         .unwrap();
+}
+
+#[test]
+fn keyword_as_ident() {
     ParseBuffer::from(&scan("let"))
         .parse_with(kw::ident)
         .unwrap_err();

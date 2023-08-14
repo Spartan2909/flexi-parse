@@ -3,9 +3,14 @@ use crate::error::ErrorKind;
 use crate::token::Ident;
 use crate::token::Literal;
 use crate::token::LiteralValue;
+use crate::token::NewLine;
 use crate::token::PunctKind;
 use crate::token::SingleCharPunct;
+use crate::token::Space2;
+use crate::token::Space4;
 use crate::token::Spacing;
+use crate::token::Tab;
+use crate::token::WhiteSpace;
 use crate::Result;
 use crate::SourceFile;
 use crate::Span;
@@ -53,41 +58,6 @@ impl Scanner {
             }
         }
 
-        let mut to_remove = vec![];
-        let mut i = 0;
-        while i < tokens.len() {
-            if tokens[i].is_space() {
-                if tokens[i + 1].is_space() {
-                    i += 2;
-                    while tokens.get(i).is_some_and(TokenTree::is_space) {
-                        i += 1;
-                    }
-                } else {
-                    to_remove.push(i);
-                    i += 1;
-                }
-            } else {
-                i += 1;
-            }
-        }
-        to_remove.reverse();
-        for index in to_remove {
-            tokens.remove(index);
-        }
-
-        let mut punct_joint = false;
-        for token in tokens.iter_mut().rev() {
-            if let TokenTree::Punct(punct) = token {
-                if punct_joint {
-                    punct.spacing = Spacing::Joint;
-                } else {
-                    punct_joint = true;
-                }
-            } else {
-                punct_joint = false;
-            }
-        }
-
         tokens.push(TokenTree::End);
 
         let errors = if self.errors.is_empty() {
@@ -105,9 +75,15 @@ impl Scanner {
                 let kind = c.try_into().unwrap();
                 let span = Span::new(self.current, self.current + 1, Rc::clone(&self.source));
                 self.current += 1;
+                let spacing = if self.peek(0).is_ok_and(|c| PunctKind::try_from(c).is_ok()) {
+                    Spacing::Joint
+                } else {
+                    Spacing::Alone
+                };
+
                 TokenTree::Punct(SingleCharPunct {
                     kind,
-                    spacing: Spacing::Alone,
+                    spacing,
                     span,
                 })
             }
@@ -144,6 +120,38 @@ impl Scanner {
                 let span = Span::new(start, self.current, Rc::clone(&self.source));
 
                 TokenTree::Ident(Ident { string, span })
+            }
+            ' ' if self.peek(1).is_ok_and(|c| c == ' ') => {
+                let start = self.current;
+                self.current += 2;
+                if self.peek(0).is_ok_and(|c| c == ' ') && self.peek(1).is_ok_and(|c| c == ' ') {
+                    self.current += 2;
+                    TokenTree::WhiteSpace(WhiteSpace::Space4(Space4(Span::new(
+                        start,
+                        self.current,
+                        Rc::clone(&self.source),
+                    ))))
+                } else {
+                    TokenTree::WhiteSpace(WhiteSpace::Space2(Space2(Span::new(
+                        start,
+                        self.current,
+                        Rc::clone(&self.source),
+                    ))))
+                }
+            }
+            ' ' => {
+                self.current += 1;
+                self.scan_token()?
+            }
+            '\t' => {
+                let span = Span::new(self.current, self.current + 1, Rc::clone(&self.source));
+                self.current += 1;
+                TokenTree::WhiteSpace(WhiteSpace::Tab(Tab(span)))
+            }
+            '\n' => {
+                let span = Span::new(self.current, self.current + 1, Rc::clone(&self.source));
+                self.current += 1;
+                TokenTree::WhiteSpace(WhiteSpace::NewLine(NewLine(span)))
             }
             _ => {
                 self.current += 1;
