@@ -111,13 +111,16 @@ impl Span {
     }
 }
 
+/// Parsing interface for types with a default parsing method.
 pub trait Parse: Sized {
     fn parse(input: ParseStream<'_>) -> Result<Self>;
 }
 
+/// A parser that can parse a stream of tokens into a syntax tree node.
 pub trait Parser: Sized {
     type Output;
 
+    /// Parses the a tokenstream into the relevant syntax tree node.
     fn parse(self, tokens: TokenStream) -> Result<Self::Output>;
 }
 
