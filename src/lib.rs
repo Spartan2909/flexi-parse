@@ -384,7 +384,7 @@ impl<'a> Cursor<'a> {
             let ptr = unsafe { self.ptr().offset(offset) };
             // SAFETY: `ptr` is live for 'a and is guaranteed by condition
             // to be valid.
-            Some(unsafe { &*self.ptr().offset(offset) })
+            Some(unsafe { &*ptr })
         } else {
             None
         }
