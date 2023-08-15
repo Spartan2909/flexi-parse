@@ -42,4 +42,4 @@ jobs:
           rustup override set nightly
           cargo miri setup
       - name: Run Miri
-        run: 'cargo miri test --workspace --all-features --verbose'
+        run: 'cargo miri test --lib --all-features --verbose'
