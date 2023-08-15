@@ -140,7 +140,7 @@ impl<D: Delimiter> Parse for Group<D> {
             }
         }
 
-        let end_of_last_token = input.get_relative(-1)?.span().end;
+        let end_of_last_token = input.get_relative(-1)?.1.span().end;
         let end = input
             .current()
             .map_err(|mut err| {
@@ -884,7 +884,7 @@ impl<T: JoinedPunct> Parse for (T, Span) {
         })?;
         let span = Span::new(
             span.start,
-            input.get_relative(-1)?.span().end,
+            input.get_relative(-1)?.1.span().end,
             Rc::clone(&input.source),
         );
         Ok((value, span))

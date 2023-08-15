@@ -12,7 +12,6 @@ use std::cell::Cell;
 use std::fs;
 use std::io;
 use std::marker::PhantomData;
-use std::mem;
 use std::ops::Range;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -131,8 +130,8 @@ impl<F: FnOnce(ParseStream<'_>) -> Result<T>, T> Parser for F {
         let cursor = Cursor {
             stream: tokens.original_tokens.as_slice(),
             start: &tokens.tokens[0],
-            ptr: &tokens.tokens[0],
-            end: tokens.tokens.last().unwrap(),
+            offset: Cell::new(0),
+            len: tokens.tokens.len(),
             _marker: PhantomData,
         };
         self(&ParseBuffer::new(cursor, Rc::clone(&tokens.source)))
@@ -227,19 +226,15 @@ impl TokenStream {
 /// This struct is unstable, and should only be used through the stable alias
 /// [`ParseStream`].
 pub struct ParseBuffer<'a> {
-    // Instead of Cell<Cursor<'a>> so that ParseBuffer<'a> is covariant in 'a.
-    cursor: Cell<Cursor<'static>>,
+    cursor: Cursor<'a>,
     source: Rc<SourceFile>,
-    _marker: PhantomData<Cursor<'a>>,
 }
 
 impl<'a> ParseBuffer<'a> {
     fn new(cursor: Cursor<'a>, source: Rc<SourceFile>) -> ParseBuffer<'a> {
         ParseBuffer {
-            // SAFETY: See comment on struct field.
-            cursor: Cell::new(unsafe { mem::transmute::<Cursor<'a>, Cursor<'static>>(cursor) }),
+            cursor,
             source,
-            _marker: PhantomData,
         }
     }
 
@@ -252,13 +247,13 @@ impl<'a> ParseBuffer<'a> {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.cursor.get().eof()
+        self.cursor.eof()
     }
 
     fn try_parse<T: Parse>(&self) -> Result<T> {
-        let cursor = self.cursor.get();
+        let offset = self.cursor.offset.get();
         T::parse(self).map_err(move |err| {
-            self.cursor.set(cursor);
+            self.cursor.offset.set(offset);
             err
         })
     }
@@ -268,16 +263,16 @@ impl<'a> ParseBuffer<'a> {
     }
 
     fn parse_undo<T: Parse>(&self) -> Result<T> {
-        let cursor = self.cursor.get();
+        let offset = self.cursor.offset.get();
         let val = T::parse(self);
-        self.cursor.set(cursor);
+        self.cursor.offset.set(offset);
         val
     }
 
     fn report_error_tokens(&self) -> Result<()> {
         let mut error = false;
-        while let (TokenTree::Error(_), cursor) = self.cursor.get().next() {
-            self.cursor.set(cursor);
+        while let (TokenTree::Error(_), offset) = self.cursor.next() {
+            self.cursor.offset.set(offset);
             error = true;
         }
         if error {
@@ -289,32 +284,32 @@ impl<'a> ParseBuffer<'a> {
 
     fn next(&self) -> Result<&'a TokenTree> {
         self.report_error_tokens()?;
-        if self.cursor.get().eof() {
+        if self.cursor.eof() {
             Err(Error::new(
                 Rc::clone(&self.source),
                 ErrorKind::EndOfFile(self.source.contents.len()),
             ))
         } else {
-            let (token, cursor) = self.cursor.get().next();
-            self.cursor.set(cursor);
+            let (token, offset) = self.cursor.next();
+            self.cursor.offset.set(offset);
             Ok(token)
         }
     }
 
     fn current(&self) -> Result<&'a (usize, TokenTree)> {
         self.report_error_tokens()?;
-        if self.cursor.get().eof() {
+        if self.cursor.eof() {
             Err(Error::new(
                 Rc::clone(&self.source),
                 ErrorKind::EndOfFile(self.source.contents.len()),
             ))
         } else {
-            Ok(self.cursor.get().current())
+            Ok(self.cursor.current())
         }
     }
 
-    fn get_relative(&self, offset: isize) -> Result<&'a TokenTree> {
-        self.cursor.get().get_relative(offset).ok_or(Error::new(
+    fn get_relative(&self, offset: isize) -> Result<&'a (usize, TokenTree)> {
+        self.cursor.get_relative(offset).ok_or(Error::new(
             Rc::clone(&self.source),
             ErrorKind::EndOfFile(self.source.contents.len()),
         ))
@@ -322,7 +317,7 @@ impl<'a> ParseBuffer<'a> {
 
     fn get_absolute_range_original(&self, range: Range<usize>) -> Result<&'a [TokenTree]> {
         self.cursor
-            .get()
+            
             .get_absolute_range_original(range)
             .ok_or(Error::new(
                 Rc::clone(&self.source),
@@ -331,7 +326,7 @@ impl<'a> ParseBuffer<'a> {
     }
 
     fn fork(&self) -> ParseBuffer<'a> {
-        ParseBuffer::new(self.cursor.get(), Rc::clone(&self.source))
+        ParseBuffer::new(self.cursor.clone(), Rc::clone(&self.source))
     }
 
     pub fn lookahead(&self) -> Lookahead<'a> {
@@ -343,57 +338,51 @@ impl<'a> ParseBuffer<'a> {
 /// [`ParseBuffer`].
 pub type ParseStream<'a> = &'a ParseBuffer<'a>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct Cursor<'a> {
     stream: *const [TokenTree],
     start: *const (usize, TokenTree),
-    ptr: *const (usize, TokenTree),
-    end: *const (usize, TokenTree),
-    _marker: PhantomData<&'a TokenTree>,
+    offset: Cell<usize>,
+    len: usize,
+    _marker: PhantomData<&'a TokenStream>,
 }
 
 impl<'a> Cursor<'a> {
-    /// # Safety
-    /// Must not be at the end of the buffer.
-    unsafe fn bump(self) -> Cursor<'a> {
-        if self.ptr == self.end {
-            self
+    fn bump(&self) -> usize {
+        let offset = self.offset.get();
+        if offset == self.len {
+            offset
         } else {
-            // SAFETY: Must be upheld by caller.
-            let ptr = unsafe { self.ptr.add(1) };
-            Cursor {
-                stream: self.stream,
-                start: self.start,
-                ptr,
-                end: self.end,
-                _marker: PhantomData,
-            }
+            offset + 1
         }
     }
 
-    fn current(self) -> &'a (usize, TokenTree) {
+    fn ptr(&self) -> *const (usize, TokenTree) {
+        // SAFETY: `offset` is always less than `len`
+        unsafe { self.start.add(self.offset.get()) }
+    }
+
+    fn current(&self) -> &'a (usize, TokenTree) {
         // SAFETY: `ptr` is valid for 'a.
-        unsafe { &*self.ptr }
+        unsafe { &*self.ptr() }
     }
 
-    pub fn eof(self) -> bool {
-        self.ptr == self.end
+    pub fn eof(&self) -> bool {
+        self.offset.get() == self.len
     }
 
-    fn next(self) -> (&'a TokenTree, Cursor<'a>) {
+    fn next(&self) -> (&'a TokenTree, usize) {
         // SAFETY: `ptr` is valid for 'a.
-        let (_, token_tree) = unsafe { &*self.ptr };
-        // SAFETY: Guaranteed by condition.
-        let cursor = unsafe { self.bump() };
-        (token_tree, cursor)
+        let (_, token_tree) = unsafe { &*self.ptr() };
+        let offset = self.bump();
+        (token_tree, offset)
     }
 
-    fn get_relative(self, offset: isize) -> Option<&'a TokenTree> {
-        let ptr = self.ptr as isize + mem::size_of::<TokenTree>() as isize * offset;
-        if self.start as isize <= ptr && self.end as isize > ptr {
+    fn get_relative(&self, offset: isize) -> Option<&'a (usize, TokenTree)> {
+        if ((self.offset.get() as isize + offset) as usize) < self.len {
             // SAFETY: `ptr` is live for 'a and is guaranteed by condition
             // to be valid.
-            Some(unsafe { &*(ptr as *const TokenTree) })
+            Some(unsafe { &*self.ptr().offset(offset) })
         } else {
             None
         }
@@ -404,7 +393,7 @@ impl<'a> Cursor<'a> {
         unsafe { &*self.stream }
     }
 
-    fn get_absolute_range_original(self, range: Range<usize>) -> Option<&'a [TokenTree]> {
+    fn get_absolute_range_original(&self, range: Range<usize>) -> Option<&'a [TokenTree]> {
         self.stream().get(range)
     }
 }
