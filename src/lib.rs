@@ -380,6 +380,8 @@ impl<'a> Cursor<'a> {
 
     fn get_relative(&self, offset: isize) -> Option<&'a (usize, TokenTree)> {
         if ((self.offset.get() as isize + offset) as usize) < self.last {
+            // SAFETY: guaranteed by condition
+            let ptr = unsafe { self.ptr().offset(offset) };
             // SAFETY: `ptr` is live for 'a and is guaranteed by condition
             // to be valid.
             Some(unsafe { &*self.ptr().offset(offset) })
