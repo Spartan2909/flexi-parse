@@ -6,12 +6,15 @@ use std::rc::Rc;
 
 mod keywords;
 mod punct;
+mod simple;
 
 fn scan(source: &str) -> TokenStream {
     let (tokens, error) = scanner::scan(Rc::new(SourceFile::new(
         "test data".to_string(),
         source.to_string(),
     )));
-    assert!(error.is_none(), "scan failed");
+    if let Some(error) = error {
+        panic!("{:?}", error);
+    }
     tokens
 }

@@ -91,16 +91,11 @@ impl Span {
         Span { start, end, source }
     }
 
-    fn dummy() -> Span {
-        const DUMMY_FILE: SourceFile = SourceFile {
-            name: String::new(),
-            path: None,
-            contents: String::new(),
-        };
+    pub fn across(start: &Span, end: &Span) -> Span {
         Span {
-            start: 0,
-            end: 0,
-            source: Rc::new(DUMMY_FILE),
+            start: start.start,
+            end: end.end,
+            source: Rc::clone(&start.source),
         }
     }
 

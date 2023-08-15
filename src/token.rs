@@ -187,6 +187,12 @@ pub struct LitStrDoubleQuote {
     span: Span,
 }
 
+impl LitStrDoubleQuote {
+    pub fn string(&self) -> &String {
+        &self.string
+    }
+}
+
 impl PartialEq for LitStrDoubleQuote {
     fn eq(&self, other: &Self) -> bool {
         self.string == other.string
@@ -227,6 +233,12 @@ pub struct LitStrSingleQuote {
     span: Span,
 }
 
+impl LitStrSingleQuote {
+    pub fn string(&self) -> &String {
+        &self.string
+    }
+}
+
 impl PartialEq for LitStrSingleQuote {
     fn eq(&self, other: &Self) -> bool {
         self.string == other.string
@@ -265,6 +277,12 @@ impl Token for LitStrSingleQuote {
 pub struct LitChar {
     ch: char,
     span: Span,
+}
+
+impl LitChar {
+    pub fn ch(&self) -> char {
+        self.ch
+    }
 }
 
 impl PartialEq for LitChar {
@@ -443,14 +461,12 @@ impl<'a> TryFrom<&'a TokenTree> for &'a Literal {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum LiteralValue {
     Int(u64),
-    Float(f64),
 }
 
 impl fmt::Display for LiteralValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             LiteralValue::Int(int) => write!(f, "{int}"),
-            LiteralValue::Float(float) => write!(f, "{float}"),
         }
     }
 }
@@ -505,6 +521,14 @@ impl Token for LitInt {
     }
 }
 
+fn int_to_decimal(int: u64) -> f64 {
+    let mut value = int as f64;
+    while value >= 1.0 {
+        value /= 10.0;
+    }
+    value
+}
+
 #[derive(Debug, Clone)]
 pub struct LitFloat {
     value: f64,
@@ -515,24 +539,27 @@ impl LitFloat {
     pub fn value(&self) -> f64 {
         self.value
     }
+
+    fn parse_impl(input: ParseStream<'_>) -> Result<Self> {
+        let start: LitInt = input.parse()?;
+        let _: Dot = input.parse()?;
+        let end: LitInt = input.parse()?;
+        Ok(LitFloat {
+            value: start.value as f64 + int_to_decimal(end.value),
+            span: Span::new(start.span.start, end.span.end, Rc::clone(&input.source)),
+        })
+    }
 }
 
 impl Parse for LitFloat {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let token = input.next()?;
-        if let TokenTree::Literal(Literal {
-            value: LiteralValue::Float(value),
-            span,
-        }) = token
-        {
-            Ok(LitFloat {
-                value: *value,
-                span: span.clone(),
-            })
+        let current_span = input.current()?.1.span();
+        if let Ok(value) = Self::parse_impl(input) {
+            Ok(value)
         } else {
             Err(Error::unexpected_token(
                 HashSet::from_iter(["a float literal".to_string()]),
-                token.span().clone(),
+                current_span.clone(),
                 Rc::clone(&input.source),
             ))
         }

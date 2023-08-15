@@ -27,14 +27,6 @@ fn valid_ident_char(c: Option<char>) -> bool {
     }
 }
 
-fn compare_result<T: PartialEq>(l: Result<T>, r: T) -> bool {
-    if let Ok(l) = l {
-        l == r
-    } else {
-        false
-    }
-}
-
 #[derive(Debug)]
 struct Scanner {
     current: usize,
@@ -97,15 +89,8 @@ impl Scanner {
                         break;
                     }
                 }
-                let value = if compare_result(self.peek(0), '.') && self.peek(1)?.is_ascii_digit() {
-                    self.current += 1;
-                    while self.peek(0)?.is_ascii_digit() {
-                        self.current += 1;
-                    }
-                    LiteralValue::Float(self.source.contents[start..self.current].parse().unwrap())
-                } else {
-                    LiteralValue::Int(self.source.contents[start..self.current].parse().unwrap())
-                };
+                let value =
+                    LiteralValue::Int(self.source.contents[start..self.current].parse().unwrap());
                 TokenTree::Literal(Literal {
                     value,
                     span: Span::new(start, self.current, Rc::clone(&self.source)),
