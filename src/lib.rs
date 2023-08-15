@@ -354,7 +354,7 @@ impl<'a> Cursor<'a> {
     }
 
     fn stream(&self) -> &'a [(usize, TokenTree)] {
-        // SAFETY: `offset` is always less than `len`
+        // SAFETY: `stream` is live for 'a
         unsafe { &*self.stream }
     }
 
@@ -378,7 +378,7 @@ impl<'a> Cursor<'a> {
     }
 
     fn original_stream(&self) -> &'a [TokenTree] {
-        // SAFETY: `stream` is live for 'a
+        // SAFETY: `original_stream` is live for 'a
         unsafe { &*self.original_stream }
     }
 
