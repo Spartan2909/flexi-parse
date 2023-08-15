@@ -131,7 +131,7 @@ impl<F: FnOnce(ParseStream<'_>) -> Result<T>, T> Parser for F {
             stream: tokens.original_tokens.as_slice(),
             start: &tokens.tokens[0],
             offset: Cell::new(0),
-            len: tokens.tokens.len(),
+            last: tokens.tokens.len() - 1,
             _marker: PhantomData,
         };
         self(&ParseBuffer::new(cursor, Rc::clone(&tokens.source)))
@@ -343,14 +343,14 @@ struct Cursor<'a> {
     stream: *const [TokenTree],
     start: *const (usize, TokenTree),
     offset: Cell<usize>,
-    len: usize,
+    last: usize,
     _marker: PhantomData<&'a TokenStream>,
 }
 
 impl<'a> Cursor<'a> {
     fn bump(&self) -> usize {
         let offset = self.offset.get();
-        if offset == self.len {
+        if offset == self.last {
             offset
         } else {
             offset + 1
@@ -368,7 +368,7 @@ impl<'a> Cursor<'a> {
     }
 
     pub fn eof(&self) -> bool {
-        self.offset.get() == self.len
+        self.offset.get() == self.last
     }
 
     fn next(&self) -> (&'a TokenTree, usize) {
@@ -379,7 +379,7 @@ impl<'a> Cursor<'a> {
     }
 
     fn get_relative(&self, offset: isize) -> Option<&'a (usize, TokenTree)> {
-        if ((self.offset.get() as isize + offset) as usize) < self.len {
+        if ((self.offset.get() as isize + offset) as usize) < self.last {
             // SAFETY: `ptr` is live for 'a and is guaranteed by condition
             // to be valid.
             Some(unsafe { &*self.ptr().offset(offset) })
