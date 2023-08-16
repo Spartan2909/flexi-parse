@@ -28,7 +28,7 @@ jobs:
     - name: Run tests
       run: cargo test --verbose --all-features --workspace
     - name: Run Clippy
-      run: cargo clippy --verbose --all-features --workspace
+      run: cargo clippy --verbose --all-features --workspace -- -D warnings
   miri:
     name: Test with Miri
     runs-on: ubuntu-latest
