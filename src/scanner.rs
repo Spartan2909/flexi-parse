@@ -1,8 +1,6 @@
 use crate::error::Error;
 use crate::error::ErrorKind;
 use crate::token::Ident;
-use crate::token::Literal;
-use crate::token::LiteralValue;
 use crate::token::NewLine;
 use crate::token::PunctKind;
 use crate::token::SingleCharPunct;
@@ -11,11 +9,11 @@ use crate::token::Space4;
 use crate::token::Spacing;
 use crate::token::Tab;
 use crate::token::WhiteSpace;
+use crate::Entry;
 use crate::Result;
 use crate::SourceFile;
 use crate::Span;
 use crate::TokenStream;
-use crate::TokenTree;
 
 use std::rc::Rc;
 
@@ -44,13 +42,13 @@ impl Scanner {
                 Ok(token) => tokens.push(token),
                 Err(err) => {
                     self.errors.add(err);
-                    tokens.push(TokenTree::Error(Span::new(0, 0, Rc::clone(&self.source))));
+                    tokens.push(Entry::Error(Span::new(0, 0, Rc::clone(&self.source))));
                     break;
                 }
             }
         }
 
-        tokens.push(TokenTree::End);
+        tokens.push(Entry::End);
 
         let errors = if self.errors.is_empty() {
             None
@@ -61,7 +59,7 @@ impl Scanner {
         (TokenStream::new(tokens, self.source), errors)
     }
 
-    fn scan_token(&mut self) -> Result<TokenTree> {
+    fn scan_token(&mut self) -> Result<Entry> {
         let token = match self.peek(0)? {
             c if PunctKind::try_from(c).is_ok() => {
                 let kind = c.try_into().unwrap();
@@ -73,30 +71,13 @@ impl Scanner {
                     Spacing::Alone
                 };
 
-                TokenTree::Punct(SingleCharPunct {
+                Entry::Punct(SingleCharPunct {
                     kind,
                     spacing,
                     span,
                 })
             }
-            c if c.is_ascii_digit() => {
-                let start = self.current;
-                loop {
-                    let c = self.peek(0);
-                    if c.is_ok_and(|c| c.is_ascii_digit()) {
-                        self.current += 1;
-                    } else {
-                        break;
-                    }
-                }
-                let value =
-                    LiteralValue::Int(self.source.contents[start..self.current].parse().unwrap());
-                TokenTree::Literal(Literal {
-                    value,
-                    span: Span::new(start, self.current, Rc::clone(&self.source)),
-                })
-            }
-            c if c.is_alphabetic() || c == '_' => {
+            c if c.is_alphanumeric() || c == '_' => {
                 let start = self.current;
                 while valid_ident_char(self.peek(0).ok()) {
                     self.current += 1;
@@ -104,20 +85,20 @@ impl Scanner {
                 let string = self.source.contents[start..self.current].to_string();
                 let span = Span::new(start, self.current, Rc::clone(&self.source));
 
-                TokenTree::Ident(Ident { string, span })
+                Entry::Ident(Ident { string, span })
             }
             ' ' if self.peek(1).is_ok_and(|c| c == ' ') => {
                 let start = self.current;
                 self.current += 2;
                 if self.peek(0).is_ok_and(|c| c == ' ') && self.peek(1).is_ok_and(|c| c == ' ') {
                     self.current += 2;
-                    TokenTree::WhiteSpace(WhiteSpace::Space4(Space4(Span::new(
+                    Entry::WhiteSpace(WhiteSpace::Space4(Space4(Span::new(
                         start,
                         self.current,
                         Rc::clone(&self.source),
                     ))))
                 } else {
-                    TokenTree::WhiteSpace(WhiteSpace::Space2(Space2(Span::new(
+                    Entry::WhiteSpace(WhiteSpace::Space2(Space2(Span::new(
                         start,
                         self.current,
                         Rc::clone(&self.source),
@@ -131,12 +112,12 @@ impl Scanner {
             '\t' => {
                 let span = Span::new(self.current, self.current + 1, Rc::clone(&self.source));
                 self.current += 1;
-                TokenTree::WhiteSpace(WhiteSpace::Tab(Tab(span)))
+                Entry::WhiteSpace(WhiteSpace::Tab(Tab(span)))
             }
             '\n' => {
                 let span = Span::new(self.current, self.current + 1, Rc::clone(&self.source));
                 self.current += 1;
-                TokenTree::WhiteSpace(WhiteSpace::NewLine(NewLine(span)))
+                Entry::WhiteSpace(WhiteSpace::NewLine(NewLine(span)))
             }
             _ => {
                 self.current += 1;

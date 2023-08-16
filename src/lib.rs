@@ -27,7 +27,6 @@ use error::Error;
 use error::ErrorKind;
 use lookahead::Lookahead;
 use token::Ident;
-use token::Literal;
 use token::SingleCharPunct;
 use token::Token;
 use token::WhiteSpace;
@@ -180,13 +179,13 @@ pub fn pretty_unwrap<T>(result: Result<T>) -> T {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TokenStream {
-    original_tokens: Vec<TokenTree>,
-    tokens: Vec<(usize, TokenTree)>,
+    original_tokens: Vec<Entry>,
+    tokens: Vec<(usize, Entry)>,
     source: Rc<SourceFile>,
 }
 
 impl TokenStream {
-    fn new(tokens: Vec<TokenTree>, source: Rc<SourceFile>) -> TokenStream {
+    fn new(tokens: Vec<Entry>, source: Rc<SourceFile>) -> TokenStream {
         TokenStream {
             original_tokens: tokens.clone(),
             tokens: tokens.into_iter().enumerate().collect(),
@@ -207,7 +206,7 @@ impl TokenStream {
         self.filter(|tokens| {
             let mut indices = vec![];
             for (index, (_, token)) in tokens.tokens.iter().enumerate() {
-                if let TokenTree::WhiteSpace(_) = token {
+                if let Entry::WhiteSpace(_) = token {
                     indices.push(index);
                 }
             }
@@ -263,7 +262,7 @@ impl<'a> ParseBuffer<'a> {
 
     fn report_error_tokens(&self) -> Result<()> {
         let mut error = false;
-        while let (TokenTree::Error(_), offset) = self.cursor.next() {
+        while let (Entry::Error(_), offset) = self.cursor.next() {
             self.cursor.offset.set(offset);
             error = true;
         }
@@ -274,7 +273,7 @@ impl<'a> ParseBuffer<'a> {
         }
     }
 
-    fn next(&self) -> Result<&'a TokenTree> {
+    fn next(&self) -> Result<&'a Entry> {
         self.report_error_tokens()?;
         if self.cursor.eof() {
             Err(Error::new(
@@ -288,7 +287,7 @@ impl<'a> ParseBuffer<'a> {
         }
     }
 
-    fn current(&self) -> Result<&'a (usize, TokenTree)> {
+    fn current(&self) -> Result<&'a (usize, Entry)> {
         self.report_error_tokens()?;
         if self.cursor.eof() {
             Err(Error::new(
@@ -300,14 +299,14 @@ impl<'a> ParseBuffer<'a> {
         }
     }
 
-    fn get_relative(&self, offset: isize) -> Result<&'a (usize, TokenTree)> {
+    fn get_relative(&self, offset: isize) -> Result<&'a (usize, Entry)> {
         self.cursor.get_relative(offset).ok_or(Error::new(
             Rc::clone(&self.source),
             ErrorKind::EndOfFile(self.source.contents.len()),
         ))
     }
 
-    fn get_absolute_range_original(&self, range: Range<usize>) -> Result<&'a [TokenTree]> {
+    fn get_absolute_range_original(&self, range: Range<usize>) -> Result<&'a [Entry]> {
         self.cursor
             .get_absolute_range_original(range)
             .ok_or(Error::new(
@@ -331,8 +330,8 @@ pub type ParseStream<'a> = &'a ParseBuffer<'a>;
 
 #[derive(Debug, Clone)]
 struct Cursor<'a> {
-    original_stream: *const [TokenTree],
-    stream: *const [(usize, TokenTree)],
+    original_stream: *const [Entry],
+    stream: *const [(usize, Entry)],
     offset: Cell<usize>,
     last: usize,
     _marker: PhantomData<&'a TokenStream>,
@@ -348,12 +347,12 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    fn stream(&self) -> &'a [(usize, TokenTree)] {
+    fn stream(&self) -> &'a [(usize, Entry)] {
         // SAFETY: `stream` is live for 'a
         unsafe { &*self.stream }
     }
 
-    fn current(&self) -> &'a (usize, TokenTree) {
+    fn current(&self) -> &'a (usize, Entry) {
         &self.stream()[self.offset.get()]
     }
 
@@ -361,76 +360,67 @@ impl<'a> Cursor<'a> {
         self.offset.get() == self.last
     }
 
-    fn next(&self) -> (&'a TokenTree, usize) {
+    fn next(&self) -> (&'a Entry, usize) {
         let (_, token_tree) = self.current();
         let offset = self.bump();
         (token_tree, offset)
     }
 
-    fn get_relative(&self, offset: isize) -> Option<&'a (usize, TokenTree)> {
+    fn get_relative(&self, offset: isize) -> Option<&'a (usize, Entry)> {
         self.stream()
             .get((self.offset.get() as isize + offset) as usize)
     }
 
-    fn original_stream(&self) -> &'a [TokenTree] {
+    fn original_stream(&self) -> &'a [Entry] {
         // SAFETY: `original_stream` is live for 'a
         unsafe { &*self.original_stream }
     }
 
-    fn get_absolute_range_original(&self, range: Range<usize>) -> Option<&'a [TokenTree]> {
+    fn get_absolute_range_original(&self, range: Range<usize>) -> Option<&'a [Entry]> {
         self.original_stream().get(range)
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum TokenTree {
+enum Entry {
     Error(Span),
     Ident(Ident),
     Punct(SingleCharPunct),
-    Literal(Literal),
     WhiteSpace(WhiteSpace),
     End,
 }
 
-impl TokenTree {
+impl Entry {
     fn span(&self) -> &Span {
         match self {
-            TokenTree::Error(span) => span,
-            TokenTree::Ident(ident) => &ident.span,
-            TokenTree::Punct(punct) => &punct.span,
-            TokenTree::Literal(literal) => &literal.span,
-            TokenTree::WhiteSpace(whitespace) => whitespace.span(),
-            TokenTree::End => panic!("called `span` on `TokenTree::End`"),
+            Entry::Error(span) => span,
+            Entry::Ident(ident) => &ident.span,
+            Entry::Punct(punct) => &punct.span,
+            Entry::WhiteSpace(whitespace) => whitespace.span(),
+            Entry::End => unreachable!(),
         }
     }
 
     fn set_span(&mut self, span: Span) {
         match self {
-            TokenTree::Error(current_span) => *current_span = span,
-            TokenTree::Ident(ident) => ident.span = span,
-            TokenTree::Punct(punct) => punct.span = span,
-            TokenTree::Literal(literal) => literal.span = span,
-            TokenTree::WhiteSpace(whitespace) => whitespace.set_span(span),
-            TokenTree::End => {}
+            Entry::Error(current_span) => *current_span = span,
+            Entry::Ident(ident) => ident.span = span,
+            Entry::Punct(punct) => punct.span = span,
+            Entry::WhiteSpace(whitespace) => whitespace.set_span(span),
+            Entry::End => unreachable!(),
         }
     }
 }
 
-impl From<Ident> for TokenTree {
+impl From<Ident> for Entry {
     fn from(value: Ident) -> Self {
         Self::Ident(value)
     }
 }
 
-impl From<SingleCharPunct> for TokenTree {
+impl From<SingleCharPunct> for Entry {
     fn from(value: SingleCharPunct) -> Self {
         Self::Punct(value)
-    }
-}
-
-impl From<Literal> for TokenTree {
-    fn from(value: Literal) -> Self {
-        Self::Literal(value)
     }
 }
 

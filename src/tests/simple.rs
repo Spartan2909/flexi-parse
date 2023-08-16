@@ -30,10 +30,11 @@ fn sequential_idents() {
 fn literals() {
     let c: LitChar = parse(scan("'s'")).unwrap();
     assert_eq!(c.ch(), 's');
-    let f: LitFloat = parse(scan("13.46")).unwrap();
-    assert_eq!(f.value(), 13.46);
+    println!("char done");
     let i: LitInt = parse(scan("67")).unwrap();
     assert_eq!(i.value(), 67);
+    let f: LitFloat = parse(scan("13.46")).unwrap();
+    assert_eq!(f.value(), 13.46);
     let s1: LitStrDoubleQuote = parse(scan("\"It's-a me, Mario!\"")).unwrap();
     assert_eq!(s1.string(), "It's-a me, Mario!");
     let s2: LitStrSingleQuote = parse(scan("'Hello, world!'")).unwrap();

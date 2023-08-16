@@ -1,12 +1,12 @@
 use crate::error::Error;
 use crate::error::ErrorKind;
 use crate::private::Sealed;
+use crate::Entry;
 use crate::Parse;
 use crate::ParseStream;
 use crate::Result;
 use crate::Span;
 use crate::TokenStream;
-use crate::TokenTree;
 
 use std::collections::HashSet;
 use std::fmt;
@@ -154,7 +154,7 @@ impl<D: Delimiter> Parse for Group<D> {
         let end_token: D::End = input.parse()?;
         let group_end = end_token.span().end;
         let mut tokens = input.get_absolute_range_original(start..end)?.to_vec();
-        tokens.push(TokenTree::End);
+        tokens.push(Entry::End);
         let token_stream = TokenStream::new(tokens, Rc::clone(&input.source));
         let span = Span::new(group_start, group_end, Rc::clone(&input.source));
         Ok(Group {
@@ -336,28 +336,8 @@ impl Ident {
     pub fn string(&self) -> &String {
         &self.string
     }
-}
 
-impl PartialEq for Ident {
-    fn eq(&self, other: &Self) -> bool {
-        self.string == other.string
-    }
-}
-
-impl TryFrom<TokenTree> for Ident {
-    type Error = TokenTree;
-
-    fn try_from(value: TokenTree) -> result::Result<Self, Self::Error> {
-        if let TokenTree::Ident(token) = value {
-            Ok(token)
-        } else {
-            Err(value)
-        }
-    }
-}
-
-impl Parse for Ident {
-    fn parse(input: ParseStream) -> Result<Self> {
+    fn parse_simple(input: ParseStream<'_>) -> Result<Self> {
         let token = input.next()?;
         if let Ok(ident) = Self::try_from(token.to_owned()) {
             Ok(ident)
@@ -369,6 +349,41 @@ impl Parse for Ident {
                     span: token.span().clone(),
                 },
             ))
+        }
+    }
+}
+
+impl PartialEq for Ident {
+    fn eq(&self, other: &Self) -> bool {
+        self.string == other.string
+    }
+}
+
+impl TryFrom<Entry> for Ident {
+    type Error = Entry;
+
+    fn try_from(value: Entry) -> result::Result<Self, Self::Error> {
+        if let Entry::Ident(token) = value {
+            Ok(token)
+        } else {
+            Err(value)
+        }
+    }
+}
+
+impl Parse for Ident {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let ident = Self::parse_simple(input)?;
+        if ident.string.chars().next().unwrap().is_ascii_digit() {
+            Err(Error::new(
+                Rc::clone(&input.source),
+                ErrorKind::UnexpectedToken {
+                    expected: HashSet::from_iter(["an identifier".to_string()]),
+                    span: ident.span().clone(),
+                },
+            ))
+        } else {
+            Ok(ident)
         }
     }
 }
@@ -402,11 +417,11 @@ impl PartialEq for SingleCharPunct {
     }
 }
 
-impl<'a> TryFrom<&'a TokenTree> for &'a SingleCharPunct {
+impl<'a> TryFrom<&'a Entry> for &'a SingleCharPunct {
     type Error = ();
 
-    fn try_from(value: &'a TokenTree) -> result::Result<Self, Self::Error> {
-        if let TokenTree::Punct(token) = value {
+    fn try_from(value: &'a Entry) -> result::Result<Self, Self::Error> {
+        if let Entry::Punct(token) = value {
             Ok(token)
         } else {
             Err(())
@@ -435,43 +450,6 @@ impl From<Result<char>> for Spacing {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Literal {
-    pub(crate) value: LiteralValue,
-    pub(crate) span: Span,
-}
-
-impl PartialEq for Literal {
-    fn eq(&self, other: &Self) -> bool {
-        self.value == other.value
-    }
-}
-
-impl<'a> TryFrom<&'a TokenTree> for &'a Literal {
-    type Error = &'a TokenTree;
-
-    fn try_from(value: &'a TokenTree) -> result::Result<Self, Self::Error> {
-        if let TokenTree::Literal(token) = value {
-            Ok(token)
-        } else {
-            Err(value)
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum LiteralValue {
-    Int(u64),
-}
-
-impl fmt::Display for LiteralValue {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            LiteralValue::Int(int) => write!(f, "{int}"),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct LitInt {
     value: u64,
     span: Span,
@@ -481,20 +459,43 @@ impl LitInt {
     pub fn value(&self) -> u64 {
         self.value
     }
+
+    fn parse_impl(input: ParseStream<'_>) -> Result<Self> {
+        let ident = Ident::parse_simple(input)?;
+        let mut chars = ident.string().chars();
+        let start: u8 = chars
+            .next()
+            .unwrap()
+            .try_into()
+            .map_err(|_| Error::empty())?;
+        if start == 0 && ident.string.len() >= 3 {
+            let ch = chars.next().unwrap();
+            let result = match ch {
+                'b' | 'B' => Some(u64::from_str_radix(&ident.string[2..], 2)),
+                'o' | 'O' => Some(u64::from_str_radix(&ident.string[2..], 8)),
+                'x' | 'X' => Some(u64::from_str_radix(&ident.string[2..], 16)),
+                _ => None,
+            };
+            if let Some(result) = result {
+                return Ok(LitInt {
+                    value: result.map_err(|_| Error::empty())?,
+                    span: ident.span,
+                });
+            }
+        }
+
+        Ok(LitInt {
+            value: ident.string.parse().map_err(|_| Error::empty())?,
+            span: ident.span,
+        })
+    }
 }
 
 impl Parse for LitInt {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let token = input.next()?;
-        if let TokenTree::Literal(Literal {
-            value: LiteralValue::Int(value),
-            span,
-        }) = token
-        {
-            Ok(LitInt {
-                value: *value,
-                span: span.clone(),
-            })
+        let token = &input.current()?.1;
+        if let Ok(lit) = Self::parse_impl(input) {
+            Ok(lit)
         } else {
             Err(Error::unexpected_token(
                 HashSet::from_iter(["an integer literal".to_string()]),
@@ -602,7 +603,7 @@ macro_rules! tokens {
             impl Parse for $t1 {
                 fn parse(input: ParseStream<'_>) -> Result<Self> {
                     let token = input.next()?.to_owned();
-                    if let TokenTree::Punct(SingleCharPunct { kind: PunctKind::$t1, span, .. }) = token {
+                    if let Entry::Punct(SingleCharPunct { kind: PunctKind::$t1, span, .. }) = token {
                         Ok(Self(span))
                     } else {
                         Err(Error::new(Rc::clone(&input.source), ErrorKind::UnexpectedToken {
@@ -669,7 +670,7 @@ macro_rules! tokens {
 
             impl $t2 {
                 fn from_tokens_impl(input: ParseStream<'_>) -> Result<Self> {
-                    if let TokenTree::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()?.1 {
+                    if let Entry::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()?.1 {
 
                     } else {
                         return Err(Error::empty());
@@ -725,12 +726,12 @@ macro_rules! tokens {
 
             impl $t3 {
                 fn from_tokens_impl(input: ParseStream<'_>) -> Result<Self> {
-                    if let TokenTree::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()?.1 {
+                    if let Entry::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()?.1 {
 
                     } else {
                         return Err(Error::empty());
                     }
-                    if let TokenTree::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()?.1 {
+                    if let Entry::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()?.1 {
 
                     } else {
                         return Err(Error::empty());
@@ -995,7 +996,7 @@ pub struct Space2(pub(crate) Span);
 impl Parse for Space2 {
     fn parse(input: ParseStream) -> Result<Self> {
         let token = input.next()?;
-        if let TokenTree::WhiteSpace(WhiteSpace::Space2(value)) = token {
+        if let Entry::WhiteSpace(WhiteSpace::Space2(value)) = token {
             Ok(value.clone())
         } else {
             Err(Error::unexpected_token(
@@ -1030,7 +1031,7 @@ pub struct Space4(pub(crate) Span);
 impl Parse for Space4 {
     fn parse(input: ParseStream) -> Result<Self> {
         let token = input.next()?;
-        if let TokenTree::WhiteSpace(WhiteSpace::Space4(value)) = token {
+        if let Entry::WhiteSpace(WhiteSpace::Space4(value)) = token {
             Ok(value.clone())
         } else {
             Err(Error::unexpected_token(
@@ -1065,7 +1066,7 @@ pub struct Tab(pub(crate) Span);
 impl Parse for Tab {
     fn parse(input: ParseStream) -> Result<Self> {
         let token = input.next()?;
-        if let TokenTree::WhiteSpace(WhiteSpace::Tab(value)) = token {
+        if let Entry::WhiteSpace(WhiteSpace::Tab(value)) = token {
             Ok(value.clone())
         } else {
             Err(Error::unexpected_token(
@@ -1100,7 +1101,7 @@ pub struct NewLine(pub(crate) Span);
 impl Parse for NewLine {
     fn parse(input: ParseStream) -> Result<Self> {
         let token = input.next()?;
-        if let TokenTree::WhiteSpace(WhiteSpace::NewLine(value)) = token {
+        if let Entry::WhiteSpace(WhiteSpace::NewLine(value)) = token {
             Ok(value.clone())
         } else {
             Err(Error::unexpected_token(

@@ -2,10 +2,10 @@ use crate::scanner;
 use crate::token::Ident;
 use crate::token::SingleCharPunct;
 use crate::token::Spacing;
+use crate::Entry;
 use crate::SourceFile;
 use crate::Span;
 use crate::TokenStream;
-use crate::TokenTree;
 
 use std::rc::Rc;
 
@@ -26,7 +26,7 @@ impl From<Spacing2> for Spacing {
     }
 }
 
-fn tree_to_trees(token: TokenTree2) -> Vec<TokenTree> {
+fn tree_to_trees(token: TokenTree2) -> Vec<Entry> {
     let mut tokens = vec![];
     let span = Span {
         start: 0,
@@ -46,7 +46,7 @@ fn tree_to_trees(token: TokenTree2) -> Vec<TokenTree> {
                 Delimiter::None => None,
             };
             if let Some((start, _)) = delimiters {
-                tokens.push(TokenTree::Punct(SingleCharPunct {
+                tokens.push(Entry::Punct(SingleCharPunct {
                     kind: start.try_into().unwrap(),
                     spacing: Spacing::Alone,
                     span: span.clone(),
@@ -56,7 +56,7 @@ fn tree_to_trees(token: TokenTree2) -> Vec<TokenTree> {
                 tokens.append(&mut tree_to_trees(token));
             }
             if let Some((_, end)) = delimiters {
-                tokens.push(TokenTree::Punct(SingleCharPunct {
+                tokens.push(Entry::Punct(SingleCharPunct {
                     kind: end.try_into().unwrap(),
                     spacing: Spacing::Alone,
                     span: span.clone(),
@@ -65,7 +65,7 @@ fn tree_to_trees(token: TokenTree2) -> Vec<TokenTree> {
         }
         TokenTree2::Ident(ident) => {
             let string = ident.to_string();
-            tokens.push(TokenTree::Ident(Ident {
+            tokens.push(Entry::Ident(Ident {
                 string,
                 span: span.clone(),
             }));
@@ -89,7 +89,7 @@ fn tree_to_trees(token: TokenTree2) -> Vec<TokenTree> {
         TokenTree2::Punct(punct) => {
             let kind = punct.as_char().try_into().unwrap();
             let spacing = punct.spacing().into();
-            tokens.push(TokenTree::Punct(SingleCharPunct {
+            tokens.push(Entry::Punct(SingleCharPunct {
                 kind,
                 spacing,
                 span: span.clone(),
@@ -115,7 +115,6 @@ impl From<TokenStream2> for TokenStream {
         for token in &mut tokens {
             token.set_span(span.clone());
         }
-        tokens.push(TokenTree::End);
         TokenStream::new(tokens, source)
     }
 }
