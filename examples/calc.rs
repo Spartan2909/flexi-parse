@@ -1,9 +1,9 @@
+use flexi_parse::group::Group;
+use flexi_parse::group::Parentheses;
 use flexi_parse::parse;
 use flexi_parse::parse_string;
 use flexi_parse::pretty_unwrap;
 use flexi_parse::token;
-use flexi_parse::token::Group;
-use flexi_parse::token::Parenthesis;
 use flexi_parse::Parse;
 use flexi_parse::ParseStream;
 use flexi_parse::Punct;
@@ -86,8 +86,8 @@ fn primary(input: ParseStream<'_>) -> Result<Expr> {
     } else if lookahead.peek::<token::LitInt>() {
         Ok(Expr::Num(input.parse::<token::LitInt>()?.value() as f64))
     } else if lookahead.peek::<token::LeftParen>() {
-        let group: Group<Parenthesis> = input.parse()?;
-        parse(group.token_stream())
+        let group: Group<Parentheses> = input.parse()?;
+        parse(group.into_token_stream())
     } else {
         Err(lookahead.error())
     }

@@ -1,3 +1,4 @@
+use crate::error::unexpected_token_message;
 use crate::error::Error;
 use crate::error::ErrorKind;
 use crate::error::SingleError;
@@ -44,9 +45,11 @@ impl From<&ErrorKind> for ReportKind<'static> {
     }
 }
 
-/// A wrapper for [`ariadne::Report`].
+/// A reported error, ready to be written to stderr.
 ///
-/// A `Vec<Report>` can be created from an [`Error`], but in many cases, the
+/// This type exposes a very similar API to [`ariadne::Report`].
+///
+/// A `Vec<Report>` can be created from an [`Error`], but in most cases, the
 /// [`Error::eprint`] method will suffice.
 pub struct Report {
     report: ariadne::Report<'static, Span>,
@@ -54,6 +57,9 @@ pub struct Report {
 }
 
 impl Report {
+    /// Writes this diagnostic to an implementor of [`Write`].
+    ///
+    /// For more details, see [`ariadne::Report::write`].
     pub fn write<W: Write>(&self, w: W) -> io::Result<()> {
         self.report.write(
             (
@@ -64,6 +70,9 @@ impl Report {
         )
     }
 
+    /// Writes this diagnostic to an implementor of [`Write`].
+    ///
+    /// For more details, see [`ariadne::Report::write_for_stdout`].
     pub fn write_for_stdout<W: Write>(&self, w: W) -> io::Result<()> {
         self.report.write_for_stdout(
             (
@@ -74,6 +83,9 @@ impl Report {
         )
     }
 
+    /// Prints this diagnostic to stderr.
+    ///
+    /// For more details, see [`ariadne::Report::eprint`].
     pub fn eprint(&self) -> io::Result<()> {
         self.report.eprint((
             self.source.id().to_owned(),
@@ -81,6 +93,10 @@ impl Report {
         ))
     }
 
+    /// Prints this diagnostic to stdout. In most cases, [`Report::eprint`] is
+    /// preferable.
+    ///
+    /// For more details, see [`ariadne::Report::print`].
     pub fn print(&self) -> io::Result<()> {
         self.report.print((
             self.source.id().to_owned(),
@@ -97,7 +113,7 @@ impl From<&SingleError> for Report {
         match &value.kind {
             ErrorKind::Silent => unreachable!(),
             ErrorKind::UnknownCharacter(span) => {
-                builder.set_message("Unknown character");
+                builder.set_message("Unrecognised character");
                 builder.add_label(Label::new(span.clone()).with_color(Color::Red));
             }
             ErrorKind::UnterminatedGroup { start, span } => {
@@ -118,22 +134,10 @@ impl From<&SingleError> for Report {
             }
             ErrorKind::UnexpectedToken { expected, span } => {
                 builder.set_message("Unexpected token");
-                let message = if expected.len() == 1 {
-                    format!("Expected {}", expected.iter().next().unwrap())
-                } else {
-                    let mut message = "Expected one of ".to_string();
-                    for (i, token) in expected.iter().enumerate() {
-                        message.push_str(token);
-                        if i + 1 < expected.len() {
-                            message.push_str(", ");
-                        }
-                    }
-                    message
-                };
                 builder.add_label(
                     Label::new(span.clone())
                         .with_color(Color::Red)
-                        .with_message(message),
+                        .with_message(unexpected_token_message(expected)),
                 );
             }
             ErrorKind::EndOfFile(_) => builder.set_message("Unexpected end of file while parsing"),
@@ -158,15 +162,12 @@ impl From<&Error> for Vec<Report> {
 }
 
 impl Error {
+    /// Prints this error to stderr.
     pub fn eprint(&self) -> io::Result<()> {
         let reports: Vec<Report> = self.into();
         for report in reports {
             report.eprint()?;
         }
         Ok(())
-    }
-
-    pub fn report(&self) -> Vec<Report> {
-        self.into()
     }
 }

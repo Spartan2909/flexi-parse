@@ -1,3 +1,5 @@
+//! A utility for checking the type of the next token.
+
 use crate::error::Error;
 use crate::token::Token;
 use crate::ParseBuffer;
@@ -5,6 +7,8 @@ use crate::ParseBuffer;
 use std::cell::RefCell;
 use std::collections::HashSet;
 
+/// A type for peeking at the next token, and generating a helpful error if it
+/// isn't an expected type.
 pub struct Lookahead<'a> {
     stream: ParseBuffer<'a>,
     comparisons: RefCell<HashSet<String>>,
@@ -18,6 +22,7 @@ impl<'a> Lookahead<'a> {
         }
     }
 
+    /// Returns true if the next token is the given type.
     pub fn peek<T: Token>(&self) -> bool {
         if self.stream.peek::<T>() {
             true
@@ -27,11 +32,8 @@ impl<'a> Lookahead<'a> {
         }
     }
 
+    /// Generates an error based on the peek attempts.
     pub fn error(self) -> Error {
-        let span = match self.stream.current() {
-            Ok((_, token)) => token.span().clone(),
-            Err(err) => return err,
-        };
-        Error::unexpected_token(self.comparisons.into_inner(), span, self.stream.source)
+        self.stream.error(self.comparisons.into_inner())
     }
 }

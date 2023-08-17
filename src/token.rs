@@ -1,24 +1,37 @@
+//! Tokens representing punctuation, identifiers, keywords, and whitespace.
+//!
+//! Types for parsing delimited groups can be found in the
+//! [`group`](crate::group) module.
+//!
+//! The punctuation tokens can be most easily accessed using the
+//! [`Punct`](crate::Punct) macro.
+
 use crate::error::Error;
 use crate::error::ErrorKind;
+use crate::group::DoubleQuotes;
+use crate::group::Group;
+use crate::group::SingleQuotes;
 use crate::private::Sealed;
 use crate::Entry;
 use crate::Parse;
 use crate::ParseStream;
 use crate::Result;
 use crate::Span;
-use crate::TokenStream;
 
 use std::collections::HashSet;
 use std::fmt;
-use std::marker::PhantomData;
 use std::rc::Rc;
 use std::result;
 
 #[doc(hidden)]
 pub use concat_idents::concat_idents;
 
+/// A trait for types that can be represented by a single token.
+///
+/// This trait is sealed, and cannot be implemented by types outside of this
+/// crate.
 pub trait Token: Parse + Sealed {
-    #[doc(hidden)]
+    /// Returns the span covered by this token.
     fn span(&self) -> &Span;
 
     #[doc(hidden)]
@@ -37,150 +50,15 @@ impl<T: Token> Parse for Option<T> {
     }
 }
 
+/// A trait for punctuation tokens.
+///
+/// This trait is sealed, and cannot be implemented by types outside of this
+/// crate.
 pub trait Punct: Token {}
 
-pub trait Delimiter {
-    type Start: Punct;
-    type End: Punct;
-    const CAN_NEST: bool;
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Parenthesis;
-
-impl Delimiter for Parenthesis {
-    type Start = LeftParen;
-    type End = RightParen;
-    const CAN_NEST: bool = true;
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Brackets;
-
-impl Delimiter for Brackets {
-    type Start = LeftBracket;
-    type End = RightBracket;
-    const CAN_NEST: bool = true;
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Braces;
-
-impl Delimiter for Braces {
-    type Start = LeftBrace;
-    type End = RightBrace;
-    const CAN_NEST: bool = true;
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct AngleBrackets;
-
-impl Delimiter for AngleBrackets {
-    type Start = LAngle;
-    type End = RAngle;
-    const CAN_NEST: bool = true;
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct SingleQuotes;
-
-impl Delimiter for SingleQuotes {
-    type Start = SingleQuote;
-    type End = SingleQuote;
-    const CAN_NEST: bool = false;
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct DoubleQuotes;
-
-impl Delimiter for DoubleQuotes {
-    type Start = DoubleQuote;
-    type End = DoubleQuote;
-    const CAN_NEST: bool = false;
-}
-
-#[derive(Debug, Clone)]
-pub struct Group<D: Delimiter> {
-    token_stream: TokenStream,
-    span: Span,
-    _marker: PhantomData<D>,
-}
-
-impl<D: Delimiter> Group<D> {
-    pub fn token_stream(self) -> TokenStream {
-        self.token_stream
-    }
-}
-
-impl<D: Delimiter> Parse for Group<D> {
-    fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let group_start = input.parse::<D::Start>()?.span().start;
-        let start = input.current()?.0;
-
-        if D::CAN_NEST {
-            let mut open = 1;
-            loop {
-                if input.peek::<D::End>() {
-                    open -= 1;
-                    if open == 0 {
-                        break;
-                    } else {
-                        input.next()?;
-                    }
-                } else if input.peek::<D::Start>() {
-                    open += 1;
-                    input.next()?;
-                } else {
-                    input.next()?;
-                }
-            }
-        } else {
-            while !input.peek::<D::End>() {
-                input.next()?;
-            }
-        }
-
-        let end_of_last_token = input.get_relative(-1)?.1.span().end;
-        let end = input
-            .current()
-            .map_err(|mut err| {
-                err.eof_to_group(
-                    Span::new(group_start, end_of_last_token, Rc::clone(&input.source)),
-                    D::Start::display(),
-                );
-                err
-            })?
-            .0;
-        let end_token: D::End = input.parse()?;
-        let group_end = end_token.span().end;
-        let mut tokens = input.get_absolute_range_original(start..end)?.to_vec();
-        tokens.push(Entry::End);
-        let token_stream = TokenStream::new(tokens, Rc::clone(&input.source));
-        let span = Span::new(group_start, group_end, Rc::clone(&input.source));
-        Ok(Group {
-            token_stream,
-            span,
-            _marker: PhantomData,
-        })
-    }
-}
-
-impl<D: Delimiter> Sealed for Group<D> {}
-
-impl<D: Delimiter> Token for Group<D> {
-    fn span(&self) -> &Span {
-        &self.span
-    }
-
-    fn set_span(&mut self, span: Span) {
-        self.span = span;
-    }
-
-    fn display() -> String {
-        D::Start::display()
-    }
-}
-
+/// A string literal delimited by double quotes.
+///
+/// See also [`DoubleQuotes`].
 #[derive(Debug, Clone)]
 pub struct LitStrDoubleQuote {
     string: String,
@@ -188,6 +66,7 @@ pub struct LitStrDoubleQuote {
 }
 
 impl LitStrDoubleQuote {
+    /// Returns the string within the quotes of this literal.
     pub fn string(&self) -> &String {
         &self.string
     }
@@ -227,6 +106,9 @@ impl Token for LitStrDoubleQuote {
     }
 }
 
+/// A string literal delimited by single quotes.
+///
+/// See also [`SingleQuotes`].
 #[derive(Debug, Clone)]
 pub struct LitStrSingleQuote {
     string: String,
@@ -234,6 +116,7 @@ pub struct LitStrSingleQuote {
 }
 
 impl LitStrSingleQuote {
+    /// Returns the string within the quotes of this literal.
     pub fn string(&self) -> &String {
         &self.string
     }
@@ -273,6 +156,9 @@ impl Token for LitStrSingleQuote {
     }
 }
 
+/// A character literal delimited by single quotes.
+///
+/// See also [`SingleQuotes`].
 #[derive(Debug, Clone)]
 pub struct LitChar {
     ch: char,
@@ -280,6 +166,7 @@ pub struct LitChar {
 }
 
 impl LitChar {
+    /// Returns the character within this literal.
     pub fn ch(&self) -> char {
         self.ch
     }
@@ -326,6 +213,8 @@ impl Token for LitChar {
     }
 }
 
+/// An identifier consisting of alphanumeric characters and underscores, and
+/// starting with an alphabetic character or an underscore.
 #[derive(Debug, Clone)]
 pub struct Ident {
     pub(crate) string: String,
@@ -333,6 +222,7 @@ pub struct Ident {
 }
 
 impl Ident {
+    /// Returns the text that makes up the identifier.
     pub fn string(&self) -> &String {
         &self.string
     }
@@ -449,6 +339,11 @@ impl From<Result<char>> for Spacing {
     }
 }
 
+/// An integer literal.
+///
+/// The default parsing implementation accepts either a string of ascii digits,
+/// or `0b`, `0o`, or `0x`, followed by a number in base 2, 8, or 16
+/// respectively.
 #[derive(Debug, Clone)]
 pub struct LitInt {
     value: u64,
@@ -456,8 +351,23 @@ pub struct LitInt {
 }
 
 impl LitInt {
+    /// Returns the value of this literal.
     pub fn value(&self) -> u64 {
         self.value
+    }
+
+    fn parse_decimal_impl(input: ParseStream<'_>) -> Result<Self> {
+        let ident = Ident::parse_simple(input)?;
+        Ok(LitInt {
+            value: ident.string.parse().map_err(|_| Error::empty())?,
+            span: ident.span,
+        })
+    }
+
+    /// Accepts a string of ascii digits.
+    pub fn parse_decimal(input: ParseStream<'_>) -> Result<Self> {
+        Self::parse_decimal_impl(input)
+            .map_err(|_| input.error(HashSet::from_iter(["an integer literal".to_string()])))
     }
 
     fn parse_impl(input: ParseStream<'_>) -> Result<Self> {
@@ -493,15 +403,10 @@ impl LitInt {
 
 impl Parse for LitInt {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let token = &input.current()?.1;
         if let Ok(lit) = Self::parse_impl(input) {
             Ok(lit)
         } else {
-            Err(Error::unexpected_token(
-                HashSet::from_iter(["an integer literal".to_string()]),
-                token.span().clone(),
-                Rc::clone(&input.source),
-            ))
+            Err(input.error(HashSet::from_iter(["an integer literal".to_string()])))
         }
     }
 }
@@ -530,6 +435,8 @@ fn int_to_decimal(int: u64) -> f64 {
     value
 }
 
+/// A string of ascii digits followed by a `.`, and then another string of
+/// ascii digits.
 #[derive(Debug, Clone)]
 pub struct LitFloat {
     value: f64,
@@ -537,14 +444,15 @@ pub struct LitFloat {
 }
 
 impl LitFloat {
+    /// Returns the value of this literal.
     pub fn value(&self) -> f64 {
         self.value
     }
 
     fn parse_impl(input: ParseStream<'_>) -> Result<Self> {
-        let start: LitInt = input.parse()?;
+        let start = LitInt::parse_decimal(input)?;
         let _: Dot = input.parse()?;
-        let end: LitInt = input.parse()?;
+        let end = LitInt::parse_decimal(input)?;
         Ok(LitFloat {
             value: start.value as f64 + int_to_decimal(end.value),
             span: Span::new(start.span.start, end.span.end, Rc::clone(&input.source)),
@@ -554,15 +462,10 @@ impl LitFloat {
 
 impl Parse for LitFloat {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let current_span = input.current()?.1.span();
         if let Ok(value) = Self::parse_impl(input) {
             Ok(value)
         } else {
-            Err(Error::unexpected_token(
-                HashSet::from_iter(["a float literal".to_string()]),
-                current_span.clone(),
-                Rc::clone(&input.source),
-            ))
+            Err(input.error(HashSet::from_iter(["a float literal".to_string()])))
         }
     }
 }
@@ -850,28 +753,6 @@ tokens! {
     }
 }
 
-impl<T: Punct> Parse for (T,) {
-    fn parse(input: ParseStream<'_>) -> Result<Self> {
-        Ok((T::parse(input)?,))
-    }
-}
-
-impl<T: Punct> Sealed for (T,) {}
-
-impl<T: Punct> Token for (T,) {
-    fn span(&self) -> &Span {
-        self.0.span()
-    }
-
-    fn set_span(&mut self, span: Span) {
-        self.0.set_span(span);
-    }
-
-    fn display() -> String {
-        T::display()
-    }
-}
-
 trait JoinedPunct: Sized {
     fn display() -> String;
 
@@ -921,6 +802,7 @@ impl<T: JoinedPunct> Parse for (T, Span) {
 
 impl<T: JoinedPunct> Sealed for (T, Span) {}
 
+#[doc(hidden)]
 impl<T: JoinedPunct> Token for (T, Span) {
     fn span(&self) -> &Span {
         &self.1
@@ -955,6 +837,7 @@ impl WhiteSpace {
         }
     }
 
+    #[cfg(feature = "proc-macro2")]
     pub(crate) fn set_span(&mut self, span: Span) {
         match self {
             WhiteSpace::Space2(Space2(original_span))
@@ -999,11 +882,7 @@ impl Parse for Space2 {
         if let Entry::WhiteSpace(WhiteSpace::Space2(value)) = token {
             Ok(value.clone())
         } else {
-            Err(Error::unexpected_token(
-                HashSet::from_iter(["a two-space tab".to_string()]),
-                token.span().clone(),
-                Rc::clone(&input.source),
-            ))
+            Err(input.error(HashSet::from_iter(["a two-space tab".to_string()])))
         }
     }
 }
@@ -1034,11 +913,7 @@ impl Parse for Space4 {
         if let Entry::WhiteSpace(WhiteSpace::Space4(value)) = token {
             Ok(value.clone())
         } else {
-            Err(Error::unexpected_token(
-                HashSet::from_iter(["a four-space tab".to_string()]),
-                token.span().clone(),
-                Rc::clone(&input.source),
-            ))
+            Err(input.error(HashSet::from_iter(["a four-space tab".to_string()])))
         }
     }
 }
@@ -1065,15 +940,10 @@ pub struct Tab(pub(crate) Span);
 
 impl Parse for Tab {
     fn parse(input: ParseStream) -> Result<Self> {
-        let token = input.next()?;
-        if let Entry::WhiteSpace(WhiteSpace::Tab(value)) = token {
+        if let Entry::WhiteSpace(WhiteSpace::Tab(value)) = input.next()? {
             Ok(value.clone())
         } else {
-            Err(Error::unexpected_token(
-                HashSet::from_iter(["a tab".to_string()]),
-                token.span().clone(),
-                Rc::clone(&input.source),
-            ))
+            Err(input.error(HashSet::from_iter(["a tab".to_string()])))
         }
     }
 }
@@ -1100,15 +970,10 @@ pub struct NewLine(pub(crate) Span);
 
 impl Parse for NewLine {
     fn parse(input: ParseStream) -> Result<Self> {
-        let token = input.next()?;
-        if let Entry::WhiteSpace(WhiteSpace::NewLine(value)) = token {
+        if let Entry::WhiteSpace(WhiteSpace::NewLine(value)) = input.next()? {
             Ok(value.clone())
         } else {
-            Err(Error::unexpected_token(
-                HashSet::from_iter(["\\n".to_string()]),
-                token.span().clone(),
-                Rc::clone(&input.source),
-            ))
+            Err(input.error(HashSet::from_iter(["\\n".to_string()])))
         }
     }
 }
@@ -1160,10 +1025,8 @@ macro_rules! keywords {
                         if ident.string() == $kw {
                             $crate::Result::Ok(Self(ident.span().to_owned()))
                         } else {
-                            $crate::Result::Err($crate::error::Error::unexpected_token(
+                            $crate::Result::Err(input.error(
                                 ::std::collections::HashSet::from_iter([$kw.to_string()]),
-                                ident.span().to_owned(),
-                                ::std::rc::Rc::clone(ident.span().source()),
                             ))
                         }
                     }
@@ -1192,10 +1055,8 @@ macro_rules! keywords {
             use $crate::token::Ident;
             let ident: Ident = input.parse()?;
             if [$( $kw ),+].contains(&ident.string().as_str()) {
-                $crate::Result::Err($crate::error::Error::unexpected_token(
+                $crate::Result::Err(input.error(
                     ::std::collections::HashSet::from_iter(["an identifier".to_string()]),
-                    ident.span().to_owned(),
-                    ::std::rc::Rc::clone(ident.span().source()),
                 ))
             } else {
                 $crate::Result::Ok(ident)

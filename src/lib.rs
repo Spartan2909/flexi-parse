@@ -1,7 +1,13 @@
+//! flexi-parse is a crate for parsing arbitrary syntax into a syntax tree. It
+//! is intended to be more flexible than a parser generator or parser
+//! combinator, while still being simple to use.
+
+#![cfg_attr(all(doc, not(doctest)), feature(doc_auto_cfg))]
 #![warn(clippy::cast_lossless)]
 #![warn(clippy::semicolon_if_nothing_returned)]
 #![warn(clippy::semicolon_outside_block)]
 #![warn(clippy::significant_drop_tightening)]
+#![warn(missing_docs)]
 #![forbid(clippy::dbg_macro)]
 #![forbid(unsafe_op_in_unsafe_fn)]
 #![forbid(clippy::multiple_unsafe_ops_per_block)]
@@ -9,6 +15,7 @@
 #![forbid(clippy::undocumented_unsafe_blocks)]
 
 use std::cell::Cell;
+use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::marker::PhantomData;
@@ -18,6 +25,7 @@ use std::rc::Rc;
 use std::result;
 
 pub mod error;
+pub mod group;
 pub mod lookahead;
 pub mod punctuated;
 mod scanner;
@@ -34,6 +42,9 @@ use token::WhiteSpace;
 #[cfg(feature = "proc-macro2")]
 mod proc_macro;
 
+/// A struct representing a file of source code.
+///
+/// This type is the input to [`parse_source`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct SourceFile {
     name: String,
@@ -42,6 +53,7 @@ pub struct SourceFile {
 }
 
 impl SourceFile {
+    /// Reads the file at the given path into a `SourceFile`.
     pub fn read(path: PathBuf) -> io::Result<SourceFile> {
         let name = path
             .file_name()
@@ -59,6 +71,7 @@ impl SourceFile {
         })
     }
 
+    /// Creates a new `SourceFile` with the given name and contents.
     pub fn new(name: String, contents: String) -> SourceFile {
         SourceFile {
             name,
@@ -90,7 +103,16 @@ impl Span {
         Span { start, end, source }
     }
 
+    /// Creates a new `Span` from the start of `start` to the end of `end`.
+    ///
+    /// ## Panics
+    /// This function will panic if `start` and `end` come from different source
+    /// files.
     pub fn across(start: &Span, end: &Span) -> Span {
+        assert_eq!(
+            start.source, end.source,
+            "both inputs to `across` must come from the same source file"
+        );
         Span {
             start: start.start,
             end: end.end,
@@ -102,15 +124,31 @@ impl Span {
     pub fn source(&self) -> &Rc<SourceFile> {
         &self.source
     }
+
+    /// Returns the start line and start column.
+    fn start_location(&self) -> (usize, usize) {
+        let mut newlines = 0;
+        let mut last_newline = 0;
+        for (i, char) in self.source.contents[..self.start].chars().enumerate() {
+            if char == '\n' {
+                newlines += 1;
+                last_newline = i;
+            }
+        }
+
+        (newlines + 1, self.start - last_newline + 1)
+    }
 }
 
 /// Parsing interface for types with a default parsing method.
 pub trait Parse: Sized {
+    /// Parses the input into this type.
     fn parse(input: ParseStream<'_>) -> Result<Self>;
 }
 
 /// A parser that can parse a stream of tokens into a syntax tree node.
 pub trait Parser: Sized {
+    /// The return type of this parser.
     type Output;
 
     /// Parses the a tokenstream into the relevant syntax tree node.
@@ -136,7 +174,7 @@ impl<F: FnOnce(ParseStream<'_>) -> Result<T>, T> Parser for F {
 ///
 /// This function ignores all whitespace.
 pub fn parse<T: Parse>(mut tokens: TokenStream) -> Result<T> {
-    tokens.skip_whitespace();
+    tokens.remove_whitespace();
     Parser::parse(T::parse, tokens)
 }
 
@@ -177,6 +215,15 @@ pub fn pretty_unwrap<T>(result: Result<T>) -> T {
     })
 }
 
+/// A sequence of tokens.
+///
+/// This is the return type of
+/// [`Group::token_stream`][group::Group::into_token_stream], and can be created
+/// from a [`proc_macro::TokenStream`][proc-macro] or
+/// [`proc_macro2::TokenStream`][proc-macro2].
+///
+/// [proc-macro]: https://doc.rust-lang.org/proc_macro/struct.TokenStream.html
+/// [proc-macro2]: https://docs.rs/proc-macro2/latest/proc_macro2/struct.TokenStream.html
 #[derive(Debug, Clone, PartialEq)]
 pub struct TokenStream {
     original_tokens: Vec<Entry>,
@@ -193,7 +240,7 @@ impl TokenStream {
         }
     }
 
-    pub fn filter<F: FnMut(&TokenStream) -> Vec<usize>>(&mut self, mut function: F) {
+    fn filter<F: FnMut(&TokenStream) -> Vec<usize>>(&mut self, mut function: F) {
         let mut indices = function(self);
         indices.sort_unstable();
         indices.reverse();
@@ -202,7 +249,10 @@ impl TokenStream {
         }
     }
 
-    pub fn skip_whitespace(&mut self) {
+    /// Removes all whitespace tokens from this stream.
+    ///
+    /// This method is automatically called by the `parse*` functions.
+    pub fn remove_whitespace(&mut self) {
         self.filter(|tokens| {
             let mut indices = vec![];
             for (index, (_, token)) in tokens.tokens.iter().enumerate() {
@@ -229,14 +279,19 @@ impl<'a> ParseBuffer<'a> {
         ParseBuffer { cursor, source }
     }
 
+    /// Attempts to parse `self` into the given syntax tree node, using `T`'s
+    /// default parsing implementation.
     pub fn parse<T: Parse>(&self) -> Result<T> {
         T::parse(self)
     }
 
+    /// Attempts to parse `self` into the given syntax tree node, using
+    /// `function`.
     pub fn parse_with<T, F: FnOnce(ParseStream<'_>) -> Result<T>>(&self, function: F) -> Result<T> {
         function(self)
     }
 
+    /// Returns true if this stream has been exhausted.
     pub fn is_empty(&self) -> bool {
         self.cursor.eof()
     }
@@ -249,6 +304,7 @@ impl<'a> ParseBuffer<'a> {
         })
     }
 
+    /// Returns true if the next token is an instance of `T`.
     pub fn peek<T: Token>(&self) -> bool {
         self.parse_undo::<T>().is_ok()
     }
@@ -319,6 +375,26 @@ impl<'a> ParseBuffer<'a> {
         ParseBuffer::new(self.cursor.clone(), Rc::clone(&self.source))
     }
 
+    /// Creates an error with the message `Unexpected token` and the given
+    /// expected tokens.
+    ///
+    /// Use of this function is generally discouraged in favour of
+    /// [`Lookahead::error`].
+    pub fn error(&self, expected: HashSet<String>) -> Error {
+        let current = match self.current() {
+            Ok(current) => current,
+            Err(err) => return err,
+        };
+        Error::new(
+            Rc::clone(&self.source),
+            ErrorKind::UnexpectedToken {
+                expected,
+                span: current.1.span().clone(),
+            },
+        )
+    }
+
+    /// Creates a helper struct for peeking at the next token.
     pub fn lookahead(&self) -> Lookahead<'a> {
         Lookahead::new(self.fork())
     }
@@ -401,6 +477,7 @@ impl Entry {
         }
     }
 
+    #[cfg(feature = "proc-macro2")]
     fn set_span(&mut self, span: Span) {
         match self {
             Entry::Error(current_span) => *current_span = span,
@@ -424,6 +501,7 @@ impl From<SingleCharPunct> for Entry {
     }
 }
 
+/// The return type of a parsing function.
 pub type Result<T> = result::Result<T, Error>;
 
 /// A macro to get the type of a punctuation token.

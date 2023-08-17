@@ -1,7 +1,19 @@
+//! Types for error reporting.
+//!
+//! This module is built around the [`Error`] type, which is returned when any
+//! parsing function encounters an error. Typically, these will not be created
+//! directly, but instead propagated up from the built-in parsing functions.
+//! The exceptions to this are [`Lookahead::error`][lookahead-error] and the
+//! discouraged [`ParseBuffer::error`][parsebuffer-error].
+//!
+//! [lookahead-error]: crate::lookahead::Lookahead::error
+//! [parsebuffer-error]: crate::ParseBuffer::error
+
 use crate::SourceFile;
 use crate::Span;
 
 use std::collections::HashSet;
+use std::fmt;
 use std::rc::Rc;
 
 #[cfg(feature = "ariadne")]
@@ -32,7 +44,7 @@ impl ErrorKind {
     fn discriminant(&self) -> u8 {
         // SAFETY: ErrorKind is `repr(u8)`, making it a `repr(C)` struct with
         // a `u8` as its first field
-        unsafe { *<*const _>::from(self).cast::<u8>() }
+        unsafe { *<*const ErrorKind>::from(self).cast::<u8>() }
     }
 
     fn start(&self) -> usize {
@@ -49,6 +61,28 @@ impl ErrorKind {
     }
 }
 
+fn unexpected_token_message(expected: &HashSet<String>) -> String {
+    if expected.len() == 1 {
+        format!("Expected {}", expected.iter().next().unwrap())
+    } else if expected.len() == 2 {
+        let mut iter = expected.iter();
+        format!(
+            "Expected {} or {}",
+            iter.next().unwrap(),
+            iter.next().unwrap()
+        )
+    } else {
+        let mut message = "Expected one of ".to_string();
+        for (i, token) in expected.iter().enumerate() {
+            message.push_str(token);
+            if i + 1 < expected.len() {
+                message.push_str(", ");
+            }
+        }
+        message
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct SingleError {
     source: Rc<SourceFile>,
@@ -56,6 +90,12 @@ pub(crate) struct SingleError {
 }
 
 /// An error or collection of errors raised during parsing.
+///
+/// These errors are intended to be reported using [`ariadne`][ariadne], but an
+/// implementation of [`ToString`] is provided as an alternative if that is not
+/// possible.
+///
+/// [ariadne]: https://docs.rs/ariadne/latest/ariadne/
 #[derive(Debug, Clone)]
 pub struct Error {
     errors: Vec<SingleError>,
@@ -105,15 +145,77 @@ impl Error {
         }
     }
 
+    /// Appends the given error to this one.
     pub fn add(&mut self, mut other: Error) {
         self.errors.append(&mut other.errors);
     }
+}
 
-    pub fn unexpected_token(
-        expected: HashSet<String>,
-        span: Span,
-        source: Rc<SourceFile>,
-    ) -> Error {
-        Error::new(source, ErrorKind::UnexpectedToken { expected, span })
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for error in &self.errors {
+            match &error.kind {
+                ErrorKind::Silent => {}
+                ErrorKind::UnknownCharacter(span) => {
+                    writeln!(
+                        f,
+                        "[E{:02}] Error: Unrecognised character",
+                        error.kind.discriminant()
+                    )?;
+                    let (line, col) = span.start_location();
+                    write!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
+                }
+                ErrorKind::UnterminatedGroup { start, span } => {
+                    writeln!(
+                        f,
+                        "[E{:02}] Error: Unmatched '{}'",
+                        error.kind.discriminant(),
+                        start
+                    )?;
+                    let (line, col) = span.start_location();
+                    write!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
+                }
+                ErrorKind::UnterminatedChar(span) => {
+                    writeln!(
+                        f,
+                        "[E{:02}] Error: Unterminated character literal",
+                        error.kind.discriminant()
+                    )?;
+                    let (line, col) = span.start_location();
+                    write!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
+                }
+                ErrorKind::LongChar(span) => {
+                    writeln!(
+                        f,
+                        "[E{:02}] Error: Character literals must be exactly one character long",
+                        error.kind.discriminant()
+                    )?;
+                    let (line, col) = span.start_location();
+                    write!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
+                }
+                ErrorKind::UnterminatedString(span) => {
+                    writeln!(
+                        f,
+                        "[E{:02}] Error: Unterminated string literal",
+                        error.kind.discriminant()
+                    )?;
+                    let (line, col) = span.start_location();
+                    write!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
+                }
+                ErrorKind::UnexpectedToken { expected, span } => {
+                    writeln!(
+                        f,
+                        "[E{:02}] Error: Unexpected token",
+                        error.kind.discriminant()
+                    )?;
+                    let (line, col) = span.start_location();
+                    writeln!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
+                    write!(f, "{}", unexpected_token_message(expected))?;
+                }
+                ErrorKind::EndOfFile(_) => write!(f, "Unexpected end of file while parsing")?,
+            }
+        }
+
+        Ok(())
     }
 }
