@@ -249,6 +249,28 @@ impl TokenStream {
         }
     }
 
+    /// Removes all whitespace that doesn't come at the start of a line.
+    ///
+    /// Note that the `parse*` functions will remove all whitespace.
+    pub fn prepare_whitespace(&mut self) {
+        self.filter(|tokens| {
+            let mut indices = vec![];
+            let mut post_newline = true;
+            for (index, (_, token)) in tokens.tokens.iter().enumerate() {
+                if let Entry::WhiteSpace(whitespace) = token {
+                    if matches!(whitespace, WhiteSpace::NewLine(_)) {
+                        post_newline = true;
+                    } else if !post_newline {
+                        indices.push(index);
+                    }
+                } else {
+                    post_newline = false;
+                }
+            }
+            indices
+        });
+    }
+
     /// Removes all whitespace tokens from this stream.
     ///
     /// This method is automatically called by the `parse*` functions.
@@ -262,6 +284,19 @@ impl TokenStream {
             }
             indices
         });
+    }
+}
+
+impl TryFrom<Rc<SourceFile>> for TokenStream {
+    type Error = Error;
+
+    fn try_from(value: Rc<SourceFile>) -> Result<Self> {
+        let (tokens, error) = scanner::scan(value);
+        if let Some(error) = error {
+            Err(error)
+        } else {
+            Ok(tokens)
+        }
     }
 }
 
@@ -397,6 +432,19 @@ impl<'a> ParseBuffer<'a> {
     /// Creates a helper struct for peeking at the next token.
     pub fn lookahead(&self) -> Lookahead<'a> {
         Lookahead::new(self.fork())
+    }
+
+    /// Skips over all whitespace tokens before the next non-whitespace token.
+    ///
+    /// This method will not skip newlines.
+    pub fn skip_whitespace(&self) {
+        while let (Entry::WhiteSpace(whitespace), offset) = self.cursor.next() {
+            if matches!(whitespace, WhiteSpace::NewLine(_)) {
+                break;
+            } else {
+                self.cursor.offset.set(offset);
+            }
+        }
     }
 }
 

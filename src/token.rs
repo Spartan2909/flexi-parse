@@ -822,7 +822,6 @@ impl<T: JoinedPunct> Punct for (T, Span) {}
 #[derive(Debug, Clone)]
 pub(crate) enum WhiteSpace {
     Space2(Space2),
-    Space4(Space4),
     Tab(Tab),
     NewLine(NewLine),
 }
@@ -831,7 +830,6 @@ impl WhiteSpace {
     pub(crate) fn span(&self) -> &Span {
         match self {
             WhiteSpace::Space2(Space2(span))
-            | WhiteSpace::Space4(Space4(span))
             | WhiteSpace::Tab(Tab(span))
             | WhiteSpace::NewLine(NewLine(span)) => span,
         }
@@ -841,7 +839,6 @@ impl WhiteSpace {
     pub(crate) fn set_span(&mut self, span: Span) {
         match self {
             WhiteSpace::Space2(Space2(original_span))
-            | WhiteSpace::Space4(Space4(original_span))
             | WhiteSpace::Tab(Tab(original_span))
             | WhiteSpace::NewLine(NewLine(original_span)) => *original_span = span,
         }
@@ -850,7 +847,6 @@ impl WhiteSpace {
     pub(crate) fn display(&self) -> String {
         match self {
             WhiteSpace::Space2(_) => Space2::display(),
-            WhiteSpace::Space4(_) => Space4::display(),
             WhiteSpace::Tab(_) => Tab::display(),
             WhiteSpace::NewLine(_) => NewLine::display(),
         }
@@ -862,15 +858,11 @@ impl PartialEq for WhiteSpace {
         matches!(
             (self, other),
             (WhiteSpace::Space2(_), WhiteSpace::Space2(_))
-                | (WhiteSpace::Space4(_), WhiteSpace::Space4(_))
                 | (WhiteSpace::Tab(_), WhiteSpace::Tab(_))
+                | (WhiteSpace::NewLine(_), WhiteSpace::NewLine(_))
         )
     }
 }
-
-/// ` `
-#[derive(Debug, Clone)]
-pub struct Space(Span);
 
 /// `  `
 #[derive(Debug, Clone)]
@@ -907,16 +899,24 @@ impl Token for Space2 {
 #[derive(Debug, Clone)]
 pub struct Space4(pub(crate) Span);
 
-impl Parse for Space4 {
-    fn parse(input: ParseStream) -> Result<Self> {
-        let token = input.next()?;
-        if let Entry::WhiteSpace(WhiteSpace::Space4(value)) = token {
-            Ok(value.clone())
-        } else {
-            Err(input.error(HashSet::from_iter(["a four-space tab".to_string()])))
+impl Space4 {
+    fn parse_impl(input: ParseStream<'_>) -> Result<Self> {
+        let start: Space2 = input.parse()?;
+        let end: Space2 = input.parse()?;
+        if start.0.end != end.0.start {
+            return Err(Error::empty());
         }
+        Ok(Space4(Span::across(start.span(), end.span())))
     }
 }
+
+impl Parse for Space4 {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
+        Self::parse_impl(input)
+            .map_err(|_| input.error(HashSet::from_iter(["a four-space tab".to_string()])))
+    }
+}
+
 impl Sealed for Space4 {}
 
 impl Token for Space4 {
@@ -933,8 +933,7 @@ impl Token for Space4 {
     }
 }
 
-#[allow(clippy::tabs_in_doc_comments)]
-/// `	`
+/// `\t`
 #[derive(Debug, Clone)]
 pub struct Tab(pub(crate) Span);
 

@@ -5,7 +5,6 @@ use crate::token::NewLine;
 use crate::token::PunctKind;
 use crate::token::SingleCharPunct;
 use crate::token::Space2;
-use crate::token::Space4;
 use crate::token::Spacing;
 use crate::token::Tab;
 use crate::token::WhiteSpace;
@@ -88,22 +87,12 @@ impl Scanner {
                 Entry::Ident(Ident { string, span })
             }
             ' ' if self.peek(1).is_ok_and(|c| c == ' ') => {
-                let start = self.current;
                 self.current += 2;
-                if self.peek(0).is_ok_and(|c| c == ' ') && self.peek(1).is_ok_and(|c| c == ' ') {
-                    self.current += 2;
-                    Entry::WhiteSpace(WhiteSpace::Space4(Space4(Span::new(
-                        start,
-                        self.current,
-                        Rc::clone(&self.source),
-                    ))))
-                } else {
-                    Entry::WhiteSpace(WhiteSpace::Space2(Space2(Span::new(
-                        start,
-                        self.current,
-                        Rc::clone(&self.source),
-                    ))))
-                }
+                Entry::WhiteSpace(WhiteSpace::Space2(Space2(Span::new(
+                    self.current - 2,
+                    self.current,
+                    Rc::clone(&self.source),
+                ))))
             }
             ' ' => {
                 self.current += 1;

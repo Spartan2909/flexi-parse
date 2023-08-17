@@ -7,6 +7,7 @@ use std::rc::Rc;
 mod keywords;
 mod punct;
 mod simple;
+mod whitespace;
 
 fn scan(source: &str) -> TokenStream {
     let (tokens, error) = scanner::scan(Rc::new(SourceFile::new(
