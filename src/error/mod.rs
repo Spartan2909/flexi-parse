@@ -25,6 +25,10 @@ pub use self::ariadne::Report;
 #[repr(u8)]
 pub(crate) enum ErrorKind {
     Silent,
+    Custom {
+        message: String,
+        span: Span,
+    },
     UnknownCharacter(Span),
     UnterminatedGroup {
         start: String,
@@ -50,7 +54,8 @@ impl ErrorKind {
     fn start(&self) -> usize {
         match self {
             ErrorKind::Silent => panic!("called `start` on `ErrorKind::Silent`"),
-            ErrorKind::UnknownCharacter(span)
+            ErrorKind::Custom { span, .. }
+            | ErrorKind::UnknownCharacter(span)
             | ErrorKind::UnterminatedGroup { span, .. }
             | ErrorKind::UnterminatedChar(span)
             | ErrorKind::LongChar(span)
@@ -149,6 +154,13 @@ impl Error {
     pub fn add(&mut self, mut other: Error) {
         self.errors.append(&mut other.errors);
     }
+
+    /// Consumes `self` and `other`, returning a new error with the contents of
+    /// both.
+    pub fn with(mut self, other: Error) -> Self {
+        self.add(other);
+        self
+    }
 }
 
 impl fmt::Display for Error {
@@ -156,6 +168,11 @@ impl fmt::Display for Error {
         for error in &self.errors {
             match &error.kind {
                 ErrorKind::Silent => {}
+                ErrorKind::Custom { message, span } => {
+                    writeln!(f, "[E{:02}] Error: {}", error.kind.discriminant(), message)?;
+                    let (line, col) = span.start_location();
+                    write!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
+                }
                 ErrorKind::UnknownCharacter(span) => {
                     writeln!(
                         f,

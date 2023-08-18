@@ -34,6 +34,6 @@ impl<'a> Lookahead<'a> {
 
     /// Generates an error based on the peek attempts.
     pub fn error(self) -> Error {
-        self.stream.error(self.comparisons.into_inner())
+        self.stream.unexpected_token(self.comparisons.into_inner())
     }
 }

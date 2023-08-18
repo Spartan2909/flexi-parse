@@ -366,8 +366,9 @@ impl LitInt {
 
     /// Accepts a string of ascii digits.
     pub fn parse_decimal(input: ParseStream<'_>) -> Result<Self> {
-        Self::parse_decimal_impl(input)
-            .map_err(|_| input.error(HashSet::from_iter(["an integer literal".to_string()])))
+        Self::parse_decimal_impl(input).map_err(|_| {
+            input.unexpected_token(HashSet::from_iter(["an integer literal".to_string()]))
+        })
     }
 
     fn parse_impl(input: ParseStream<'_>) -> Result<Self> {
@@ -406,7 +407,7 @@ impl Parse for LitInt {
         if let Ok(lit) = Self::parse_impl(input) {
             Ok(lit)
         } else {
-            Err(input.error(HashSet::from_iter(["an integer literal".to_string()])))
+            Err(input.unexpected_token(HashSet::from_iter(["an integer literal".to_string()])))
         }
     }
 }
@@ -465,7 +466,7 @@ impl Parse for LitFloat {
         if let Ok(value) = Self::parse_impl(input) {
             Ok(value)
         } else {
-            Err(input.error(HashSet::from_iter(["a float literal".to_string()])))
+            Err(input.unexpected_token(HashSet::from_iter(["a float literal".to_string()])))
         }
     }
 }
@@ -724,6 +725,7 @@ tokens! {
     }
     {
         (BangEqual, Bang, Equal, "!=", "`!=`")
+        (EqualEqual, Equal, Equal, "==", "`==`")
         (RAngleEqual, RAngle, Equal, ">=", "`>=`")
         (LAngleEqual, LAngle, Equal, "<=", "`<=`")
         (PlusEqual, Plus, Equal, "+=", "`+=`")
@@ -879,7 +881,7 @@ impl Parse for Space2 {
         if let Entry::WhiteSpace(WhiteSpace::Space2(value)) = token {
             Ok(value.clone())
         } else {
-            Err(input.error(HashSet::from_iter(["a two-space tab".to_string()])))
+            Err(input.unexpected_token(HashSet::from_iter(["a two-space tab".to_string()])))
         }
     }
 }
@@ -917,8 +919,9 @@ impl Space4 {
 
 impl Parse for Space4 {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        Self::parse_impl(input)
-            .map_err(|_| input.error(HashSet::from_iter(["a four-space tab".to_string()])))
+        Self::parse_impl(input).map_err(|_| {
+            input.unexpected_token(HashSet::from_iter(["a four-space tab".to_string()]))
+        })
     }
 }
 
@@ -947,7 +950,7 @@ impl Parse for Tab {
         if let Entry::WhiteSpace(WhiteSpace::Tab(value)) = input.next()? {
             Ok(value.clone())
         } else {
-            Err(input.error(HashSet::from_iter(["a tab".to_string()])))
+            Err(input.unexpected_token(HashSet::from_iter(["a tab".to_string()])))
         }
     }
 }
@@ -977,7 +980,7 @@ impl Parse for NewLine {
         if let Entry::WhiteSpace(WhiteSpace::NewLine(value)) = input.next()? {
             Ok(value.clone())
         } else {
-            Err(input.error(HashSet::from_iter(["\\n".to_string()])))
+            Err(input.unexpected_token(HashSet::from_iter(["\\n".to_string()])))
         }
     }
 }
@@ -1007,7 +1010,7 @@ impl Parse for CarriageReturn {
         if let Entry::WhiteSpace(WhiteSpace::CarriageReturn(value)) = input.next()? {
             Ok(value.clone())
         } else {
-            Err(input.error(HashSet::from_iter(["a carriage return".to_string()])))
+            Err(input.unexpected_token(HashSet::from_iter(["a carriage return".to_string()])))
         }
     }
 }
@@ -1053,13 +1056,20 @@ macro_rules! keywords {
                 #[allow(non_camel_case_types)]
                 pub struct struct_name($crate::Span);
 
+                impl struct_name {
+                    #[allow(dead_code)]
+                    pub fn new(input: $crate::ParseStream<'_>) -> Self {
+                        Self(input.empty_span())
+                    }
+                }
+
                 impl $crate::Parse for struct_name {
                     fn parse(input: $crate::ParseStream<'_>) -> $crate::Result<Self> {
                         let ident: $crate::token::Ident = input.parse()?;
                         if ident.string() == $kw {
                             $crate::Result::Ok(Self(ident.span().to_owned()))
                         } else {
-                            $crate::Result::Err(input.error(
+                            $crate::Result::Err(input.unexpected_token(
                                 ::std::collections::HashSet::from_iter([$kw.to_string()]),
                             ))
                         }
@@ -1084,12 +1094,12 @@ macro_rules! keywords {
             });
         )+
 
+        /// Parses non-keyword identifiers.
         #[allow(dead_code)]
         pub fn ident(input: $crate::ParseStream<'_>) -> $crate::Result<$crate::token::Ident> {
-            use $crate::token::Ident;
-            let ident: Ident = input.parse()?;
+            let ident: $crate::token::Ident = input.parse()?;
             if [$( $kw ),+].contains(&ident.string().as_str()) {
-                $crate::Result::Err(input.error(
+                $crate::Result::Err(input.unexpected_token(
                     ::std::collections::HashSet::from_iter(["an identifier".to_string()]),
                 ))
             } else {

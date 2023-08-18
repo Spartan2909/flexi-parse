@@ -1,9 +1,9 @@
 use crate::error::Error;
 use crate::error::ErrorKind;
+use crate::token::CarriageReturn;
 use crate::token::Ident;
 use crate::token::NewLine;
 use crate::token::PunctKind;
-use crate::token::CarriageReturn;
 use crate::token::SingleCharPunct;
 use crate::token::Space2;
 use crate::token::Spacing;

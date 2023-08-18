@@ -15,6 +15,7 @@
 #![forbid(clippy::undocumented_unsafe_blocks)]
 
 use std::cell::Cell;
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fs;
 use std::io;
@@ -137,6 +138,17 @@ impl Span {
         }
 
         (newlines + 1, self.start - last_newline + 1)
+    }
+
+    /// Returns true if the span was created with `Span::new_empty()`.
+    pub fn is_empty(&self) -> bool {
+        self.start == self.end
+    }
+}
+
+impl<T: Token> From<&T> for Span {
+    fn from(value: &T) -> Self {
+        value.span().clone()
     }
 }
 
@@ -301,17 +313,19 @@ impl TryFrom<Rc<SourceFile>> for TokenStream {
 }
 
 /// A cursor position within a token stream.
-///
-/// This struct is unstable, and should only be used through the stable alias
-/// [`ParseStream`].
 pub struct ParseBuffer<'a> {
     cursor: Cursor<'a>,
     source: Rc<SourceFile>,
+    error: RefCell<Error>,
 }
 
 impl<'a> ParseBuffer<'a> {
     fn new(cursor: Cursor<'a>, source: Rc<SourceFile>) -> ParseBuffer<'a> {
-        ParseBuffer { cursor, source }
+        ParseBuffer {
+            cursor,
+            source,
+            error: RefCell::new(Error::empty()),
+        }
     }
 
     /// Attempts to parse `self` into the given syntax tree node, using `T`'s
@@ -331,6 +345,39 @@ impl<'a> ParseBuffer<'a> {
         self.cursor.eof()
     }
 
+    /// Creates a new error at the given location with the given message.
+    pub fn new_error<T: Into<Span>>(&self, message: String, location: T) -> Error {
+        Error::new(
+            Rc::clone(&self.source),
+            ErrorKind::Custom {
+                message,
+                span: location.into(),
+            },
+        )
+    }
+
+    /// Adds a new error to this buffer's storage.
+    pub fn add_error(&self, error: Error) {
+        self.error.borrow_mut().add(error);
+    }
+
+    /// Returns an error consisting of all errors from
+    /// [`ParseBuffer::add_error`], if it has been called.
+    pub fn get_error(&self) -> Option<Error> {
+        if self.error.borrow().is_empty() {
+            None
+        } else {
+            Some(self.error.borrow().to_owned())
+        }
+    }
+
+    /// Repeatedly skips tokens until `function` returns true.
+    pub fn synchronise<F: FnMut(ParseStream<'_>) -> bool>(&self, mut function: F) {
+        while !self.is_empty() && !function(self) {
+            let _ = self.next();
+        }
+    }
+
     fn try_parse<T: Parse>(&self) -> Result<T> {
         let offset = self.cursor.offset.get();
         T::parse(self).map_err(move |err| {
@@ -342,6 +389,17 @@ impl<'a> ParseBuffer<'a> {
     /// Returns true if the next token is an instance of `T`.
     pub fn peek<T: Token>(&self) -> bool {
         self.parse_undo::<T>().is_ok()
+    }
+
+    /// Returns true if the next token is an instance of `T`.
+    ///
+    /// Note that for the purposes of this function, multi-character punctuation
+    /// like `+=` is considered to be two tokens, and float literals are
+    /// considered to be three tokens (start, `.`, end).
+    pub fn peek2<T: Token>(&self) -> bool {
+        let buffer = self.fork();
+        let _ = buffer.next();
+        buffer.peek::<T>()
     }
 
     fn parse_undo<T: Parse>(&self) -> Result<T> {
@@ -415,7 +473,7 @@ impl<'a> ParseBuffer<'a> {
     ///
     /// Use of this function is generally discouraged in favour of
     /// [`Lookahead::error`].
-    pub fn error(&self, expected: HashSet<String>) -> Error {
+    pub fn unexpected_token(&self, expected: HashSet<String>) -> Error {
         let current = match self.current() {
             Ok(current) => current,
             Err(err) => return err,
@@ -446,6 +504,37 @@ impl<'a> ParseBuffer<'a> {
             }
         }
     }
+
+    /// Creates a new empty Span with this stream's source file.
+    pub fn empty_span(&self) -> Span {
+        Span {
+            start: 0,
+            end: 0,
+            source: Rc::clone(&self.source),
+        }
+    }
+}
+
+/// Returns true if [`ParseBuffer::peek`] would return true for any types
+/// passed.
+///
+/// Accepts a ParseStream followed by one or more types.
+#[macro_export]
+macro_rules! peek_any {
+    ( $input:expr, $( $ty:ty ),+ ) => {
+        $( $input.peek::<$ty>() || )+ false
+    };
+}
+
+/// Returns true if [`ParseBuffer::peek2`] would return true for any types
+/// passed.
+///
+/// Accepts a ParseStream followed by one or more types.
+#[macro_export]
+macro_rules! peek2_any {
+    ( $input:expr, $( $ty:ty ),+ ) => {
+        $( $input.peek2::<$ty>() || )+ false
+    };
 }
 
 /// The input type for all parsing functions. This is a stable alias for
@@ -589,6 +678,7 @@ macro_rules! Punct {
     ["."] => { $crate::token::Dot };
     ["\""] => { $crate::token::DoubleQuote };
     ["="] => { $crate::token::Equal };
+    ["=="] => { $crate::token::EqualEqual };
     ["=>"] => { $crate::token::FatArrow };
     ["#"] => { $crate::token::Hash };
     ["##"] => { $crate::token::HashHash };

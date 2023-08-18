@@ -34,6 +34,7 @@ impl From<&ErrorKind> for ReportKind<'static> {
     fn from(value: &ErrorKind) -> Self {
         match value {
             ErrorKind::Silent
+            | ErrorKind::Custom { .. }
             | ErrorKind::UnknownCharacter(_)
             | ErrorKind::UnterminatedGroup { .. }
             | ErrorKind::UnterminatedChar(_)
@@ -112,6 +113,10 @@ impl From<&SingleError> for Report {
                 .with_code(value.kind.discriminant());
         match &value.kind {
             ErrorKind::Silent => unreachable!(),
+            ErrorKind::Custom { message, span } => {
+                builder.set_message(message);
+                builder.add_label(Label::new(span.clone()).with_color(Color::Red));
+            }
             ErrorKind::UnknownCharacter(span) => {
                 builder.set_message("Unrecognised character");
                 builder.add_label(Label::new(span.clone()).with_color(Color::Red));
