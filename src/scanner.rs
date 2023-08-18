@@ -3,6 +3,7 @@ use crate::error::ErrorKind;
 use crate::token::Ident;
 use crate::token::NewLine;
 use crate::token::PunctKind;
+use crate::token::CarriageReturn;
 use crate::token::SingleCharPunct;
 use crate::token::Space2;
 use crate::token::Spacing;
@@ -107,6 +108,11 @@ impl Scanner {
                 let span = Span::new(self.current, self.current + 1, Rc::clone(&self.source));
                 self.current += 1;
                 Entry::WhiteSpace(WhiteSpace::NewLine(NewLine(span)))
+            }
+            '\u{000D}' => {
+                let span = Span::new(self.current, self.current + 1, Rc::clone(&self.source));
+                self.current += 1;
+                Entry::WhiteSpace(WhiteSpace::CarriageReturn(CarriageReturn(span)))
             }
             _ => {
                 self.current += 1;

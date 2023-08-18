@@ -824,6 +824,7 @@ pub(crate) enum WhiteSpace {
     Space2(Space2),
     Tab(Tab),
     NewLine(NewLine),
+    CarriageReturn(CarriageReturn),
 }
 
 impl WhiteSpace {
@@ -831,7 +832,8 @@ impl WhiteSpace {
         match self {
             WhiteSpace::Space2(Space2(span))
             | WhiteSpace::Tab(Tab(span))
-            | WhiteSpace::NewLine(NewLine(span)) => span,
+            | WhiteSpace::NewLine(NewLine(span))
+            | WhiteSpace::CarriageReturn(CarriageReturn(span)) => span,
         }
     }
 
@@ -840,7 +842,8 @@ impl WhiteSpace {
         match self {
             WhiteSpace::Space2(Space2(original_span))
             | WhiteSpace::Tab(Tab(original_span))
-            | WhiteSpace::NewLine(NewLine(original_span)) => *original_span = span,
+            | WhiteSpace::NewLine(NewLine(original_span))
+            | WhiteSpace::CarriageReturn(CarriageReturn(original_span)) => *original_span = span,
         }
     }
 
@@ -849,6 +852,7 @@ impl WhiteSpace {
             WhiteSpace::Space2(_) => Space2::display(),
             WhiteSpace::Tab(_) => Tab::display(),
             WhiteSpace::NewLine(_) => NewLine::display(),
+            WhiteSpace::CarriageReturn(_) => CarriageReturn::display(),
         }
     }
 }
@@ -860,6 +864,7 @@ impl PartialEq for WhiteSpace {
             (WhiteSpace::Space2(_), WhiteSpace::Space2(_))
                 | (WhiteSpace::Tab(_), WhiteSpace::Tab(_))
                 | (WhiteSpace::NewLine(_), WhiteSpace::NewLine(_))
+                | (WhiteSpace::CarriageReturn(_), WhiteSpace::CarriageReturn(_))
         )
     }
 }
@@ -990,6 +995,36 @@ impl Token for NewLine {
 
     fn display() -> String {
         "\\n".to_string()
+    }
+}
+
+/// `u+000D`
+#[derive(Debug, Clone)]
+pub struct CarriageReturn(pub(crate) Span);
+
+impl Parse for CarriageReturn {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
+        if let Entry::WhiteSpace(WhiteSpace::CarriageReturn(value)) = input.next()? {
+            Ok(value.clone())
+        } else {
+            Err(input.error(HashSet::from_iter(["a carriage return".to_string()])))
+        }
+    }
+}
+
+impl Sealed for CarriageReturn {}
+
+impl Token for CarriageReturn {
+    fn span(&self) -> &Span {
+        &self.0
+    }
+
+    fn set_span(&mut self, span: Span) {
+        self.0 = span;
+    }
+
+    fn display() -> String {
+        "a carriage return".to_string()
     }
 }
 

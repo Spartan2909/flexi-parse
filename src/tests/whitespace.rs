@@ -59,11 +59,13 @@ fn skip() {
         let _: Space2 = input.parse().unwrap();
         input.skip_whitespace();
         let _: NewLine = input.parse().unwrap();
+        let _: Space2 = input.parse().unwrap();
+        input.skip_whitespace();
         let testing: Ident = input.parse().unwrap();
         Ok((test.string, testing.string))
     }
 
-    let tokens = scan("      test    \ntesting");
+    let tokens = scan("      test    \n      testing");
     let (test, testing) = skip_inner.parse(tokens).unwrap();
     assert_eq!(test, "test");
     assert_eq!(testing, "testing");
