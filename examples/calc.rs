@@ -81,11 +81,11 @@ fn unary(input: ParseStream<'_>) -> Result<Expr> {
 
 fn primary(input: ParseStream<'_>) -> Result<Expr> {
     let lookahead = input.lookahead();
-    if lookahead.peek::<token::LitFloat>() {
+    if lookahead.peek(token::LitFloat) {
         Ok(Expr::Num(input.parse::<token::LitFloat>()?.value()))
-    } else if lookahead.peek::<token::LitInt>() {
+    } else if lookahead.peek(token::LitInt) {
         Ok(Expr::Num(input.parse::<token::LitInt>()?.value() as f64))
-    } else if lookahead.peek::<token::LeftParen>() {
+    } else if lookahead.peek(token::LeftParen) {
         let group: Group<Parentheses> = input.parse()?;
         parse(group.into_token_stream())
     } else {

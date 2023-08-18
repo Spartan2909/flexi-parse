@@ -56,7 +56,7 @@ impl<T, P: Punct> Punctuated<T, P> {
         let mut punctuated = Punctuated::new();
         punctuated.push_value(f(input)?);
 
-        while input.peek::<P>() {
+        while P::peek(input) {
             punctuated.push_punct(input.parse()?);
             punctuated.push_value(f(input)?);
         }

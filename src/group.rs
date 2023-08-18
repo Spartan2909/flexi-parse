@@ -179,14 +179,14 @@ impl<D: Delimiters> Parse for Group<D> {
         if D::CAN_NEST {
             let mut open = 1;
             loop {
-                if input.peek::<D::End>() {
+                if D::End::peek(input) {
                     open -= 1;
                     if open == 0 {
                         break;
                     } else {
                         input.next()?;
                     }
-                } else if input.peek::<D::Start>() {
+                } else if D::Start::peek(input) {
                     open += 1;
                     input.next()?;
                 } else {
@@ -194,7 +194,7 @@ impl<D: Delimiters> Parse for Group<D> {
                 }
             }
         } else {
-            while !input.peek::<D::End>() {
+            while !D::End::peek(input) {
                 input.next()?;
             }
         }

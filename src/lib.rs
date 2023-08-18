@@ -387,8 +387,9 @@ impl<'a> ParseBuffer<'a> {
     }
 
     /// Returns true if the next token is an instance of `T`.
-    pub fn peek<T: Token>(&self) -> bool {
-        self.parse_undo::<T>().is_ok()
+    pub fn peek<T: Peek>(&self, token: T) -> bool {
+        let _ = token;
+        self.parse_undo::<T::Token>().is_ok()
     }
 
     /// Returns true if the next token is an instance of `T`.
@@ -396,10 +397,10 @@ impl<'a> ParseBuffer<'a> {
     /// Note that for the purposes of this function, multi-character punctuation
     /// like `+=` is considered to be two tokens, and float literals are
     /// considered to be three tokens (start, `.`, end).
-    pub fn peek2<T: Token>(&self) -> bool {
+    pub fn peek2<T: Peek>(&self, token: T) -> bool {
         let buffer = self.fork();
         let _ = buffer.next();
-        buffer.peek::<T>()
+        buffer.peek::<T>(token)
     }
 
     fn parse_undo<T: Parse>(&self) -> Result<T> {
@@ -515,14 +516,32 @@ impl<'a> ParseBuffer<'a> {
     }
 }
 
+/// Types that can be parsed by looking at a single token.
+///
+/// This trait is sealed, and cannot be implemented for types outside of this
+/// crate.
+pub trait Peek: Sealed {
+    #[doc(hidden)]
+    type Token: Token;
+}
+
+#[doc(hidden)]
+pub enum Marker {}
+
+impl<F: FnOnce(Marker) -> T, T: Token> Sealed for F {}
+
+impl<F: FnOnce(Marker) -> T, T: Token> Peek for F {
+    type Token = T;
+}
+
 /// Returns true if [`ParseBuffer::peek`] would return true for any types
 /// passed.
 ///
 /// Accepts a ParseStream followed by one or more types.
 #[macro_export]
 macro_rules! peek_any {
-    ( $input:expr, $( $ty:ty ),+ ) => {
-        $( $input.peek::<$ty>() || )+ false
+    ( $input:expr, $( $ty:tt ),+ ) => {
+        $( $input.peek($ty) || )+ false
     };
 }
 
@@ -532,8 +551,8 @@ macro_rules! peek_any {
 /// Accepts a ParseStream followed by one or more types.
 #[macro_export]
 macro_rules! peek2_any {
-    ( $input:expr, $( $ty:ty ),+ ) => {
-        $( $input.peek2::<$ty>() || )+ false
+    ( $input:expr, $( $ty:tt ),+ ) => {
+        $( $input.peek2($ty) || )+ false
     };
 }
 
@@ -734,6 +753,7 @@ macro_rules! Punct {
 pub mod private {
     pub trait Sealed {}
 }
+use private::Sealed;
 
 #[cfg(test)]
 mod tests;

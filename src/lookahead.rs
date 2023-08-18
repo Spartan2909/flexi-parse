@@ -3,6 +3,7 @@
 use crate::error::Error;
 use crate::token::Token;
 use crate::ParseBuffer;
+use crate::Peek;
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -23,11 +24,11 @@ impl<'a> Lookahead<'a> {
     }
 
     /// Returns true if the next token is the given type.
-    pub fn peek<T: Token>(&self) -> bool {
-        if self.stream.peek::<T>() {
+    pub fn peek<T: Peek>(&self, token: T) -> bool {
+        if self.stream.peek::<T>(token) {
             true
         } else {
-            self.comparisons.borrow_mut().insert(T::display());
+            self.comparisons.borrow_mut().insert(T::Token::display());
             false
         }
     }

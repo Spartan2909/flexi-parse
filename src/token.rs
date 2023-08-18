@@ -13,6 +13,7 @@ use crate::group::Group;
 use crate::group::SingleQuotes;
 use crate::private::Sealed;
 use crate::Entry;
+use crate::Marker;
 use crate::Parse;
 use crate::ParseStream;
 use crate::Result;
@@ -54,7 +55,10 @@ impl<T: Token> Parse for Option<T> {
 ///
 /// This trait is sealed, and cannot be implemented by types outside of this
 /// crate.
-pub trait Punct: Token {}
+pub trait Punct: Token {
+    #[doc(hidden)]
+    fn peek(input: ParseStream<'_>) -> bool;
+}
 
 /// A string literal delimited by double quotes.
 ///
@@ -106,6 +110,12 @@ impl Token for LitStrDoubleQuote {
     }
 }
 
+#[doc(hidden)]
+#[allow(non_snake_case)]
+pub fn LitStrDoubleQuote(marker: Marker) -> LitStrDoubleQuote {
+    match marker {}
+}
+
 /// A string literal delimited by single quotes.
 ///
 /// See also [`SingleQuotes`].
@@ -154,6 +164,12 @@ impl Token for LitStrSingleQuote {
     fn display() -> String {
         "a string literal".to_string()
     }
+}
+
+#[doc(hidden)]
+#[allow(non_snake_case)]
+pub fn LitStrSingleQuote(marker: Marker) -> LitStrSingleQuote {
+    match marker {}
 }
 
 /// A character literal delimited by single quotes.
@@ -211,6 +227,12 @@ impl Token for LitChar {
     fn display() -> String {
         "a character literal".to_string()
     }
+}
+
+#[doc(hidden)]
+#[allow(non_snake_case)]
+pub fn LitChar(marker: Marker) -> LitChar {
+    match marker {}
 }
 
 /// An identifier consisting of alphanumeric characters and underscores, and
@@ -292,6 +314,12 @@ impl Token for Ident {
     fn display() -> String {
         "an identifier".to_string()
     }
+}
+
+#[doc(hidden)]
+#[allow(non_snake_case)]
+pub fn Ident(marker: Marker) -> Ident {
+    match marker {}
 }
 
 #[derive(Debug, Clone)]
@@ -436,6 +464,12 @@ fn int_to_decimal(int: u64) -> f64 {
     value
 }
 
+#[doc(hidden)]
+#[allow(non_snake_case)]
+pub fn LitInt(marker: Marker) -> LitInt {
+    match marker {}
+}
+
 /// A string of ascii digits followed by a `.`, and then another string of
 /// ascii digits.
 #[derive(Debug, Clone)]
@@ -487,6 +521,12 @@ impl Token for LitFloat {
     }
 }
 
+#[doc(hidden)]
+#[allow(non_snake_case)]
+pub fn LitFloat(marker: Marker) -> LitFloat {
+    match marker {}
+}
+
 macro_rules! tokens {
     {
         {
@@ -502,13 +542,15 @@ macro_rules! tokens {
         $(
             #[derive(Debug, Clone)]
             #[doc = $doc1]
-            pub struct $t1(Span);
+            pub struct $t1 {
+                span: Span,
+            }
 
             impl Parse for $t1 {
                 fn parse(input: ParseStream<'_>) -> Result<Self> {
                     let token = input.next()?.to_owned();
                     if let Entry::Punct(SingleCharPunct { kind: PunctKind::$t1, span, .. }) = token {
-                        Ok(Self(span))
+                        Ok(Self { span })
                     } else {
                         Err(Error::new(Rc::clone(&input.source), ErrorKind::UnexpectedToken {
                             expected: HashSet::from_iter(vec![format!("'{}'", $name1)]),
@@ -522,11 +564,11 @@ macro_rules! tokens {
 
             impl Token for $t1 {
                 fn span(&self) -> &Span {
-                    &self.0
+                    &self.span
                 }
 
                 fn set_span(&mut self, span: Span) {
-                    self.0 = span;
+                    self.span = span;
                 }
 
                 fn display() -> String {
@@ -540,7 +582,17 @@ macro_rules! tokens {
                 }
             }
 
-            impl Punct for $t1 {}
+            impl Punct for $t1 {
+                fn peek(input: ParseStream<'_>) -> bool {
+                    input.peek($t1)
+                }
+            }
+
+            #[doc(hidden)]
+            #[allow(non_snake_case)]
+            pub fn $t1(marker: Marker) -> $t1 {
+                match marker {}
+            }
         )+
 
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -570,7 +622,9 @@ macro_rules! tokens {
         $(
             #[derive(Debug, Clone)]
             #[doc = $doc2]
-            pub struct $t2(Span);
+            pub struct $t2 {
+                span: Span,
+            }
 
             impl $t2 {
                 fn from_tokens_impl(input: ParseStream<'_>) -> Result<Self> {
@@ -582,7 +636,9 @@ macro_rules! tokens {
 
                     let start: $t21 = input.parse()?;
                     let end: $t22 = input.parse()?;
-                    Ok(Self(Span::new(start.0.start, end.0.end, start.0.source)))
+                    Ok(Self {
+                        span: Span::new(start.span.start, end.span.end, start.span.source)
+                    })
                 }
             }
 
@@ -602,11 +658,11 @@ macro_rules! tokens {
 
             impl Token for $t2 {
                 fn span(&self) -> &Span {
-                    &self.0
+                    &self.span
                 }
 
                 fn set_span(&mut self, span: Span) {
-                    self.0 = span;
+                    self.span = span;
                 }
 
                 fn display() -> String {
@@ -620,13 +676,25 @@ macro_rules! tokens {
                 }
             }
 
-            impl Punct for $t2 {}
+            impl Punct for $t2 {
+                fn peek(input: ParseStream<'_>) -> bool {
+                    input.peek($t2)
+                }
+            }
+
+            #[doc(hidden)]
+            #[allow(non_snake_case)]
+            pub fn $t2(marker: Marker) -> $t2 {
+                match marker {}
+            }
         )+
 
         $(
             #[derive(Debug, Clone)]
             #[doc = $doc3]
-            pub struct $t3(Span);
+            pub struct $t3 {
+                span: Span,
+            }
 
             impl $t3 {
                 fn from_tokens_impl(input: ParseStream<'_>) -> Result<Self> {
@@ -643,7 +711,9 @@ macro_rules! tokens {
                     let p1: $t31 = input.parse()?;
                     let _p2: $t32 = input.parse()?;
                     let p3: $t33 = input.parse()?;
-                    Ok(Self(Span::new(p1.0.start, p3.0.end, p1.0.source)))
+                    Ok(Self {
+                        span: Span::new(p1.span.start, p3.span.end, p1.span.source)
+                    })
                 }
             }
 
@@ -663,11 +733,11 @@ macro_rules! tokens {
 
             impl Token for $t3 {
                 fn span(&self) -> &Span {
-                    &self.0
+                    &self.span
                 }
 
                 fn set_span(&mut self, span: Span) {
-                    self.0 = span;
+                    self.span = span;
                 }
 
                 fn display() -> String {
@@ -681,7 +751,17 @@ macro_rules! tokens {
                 }
             }
 
-            impl Punct for $t3 {}
+            impl Punct for $t3 {
+                fn peek(input: ParseStream<'_>) -> bool {
+                    input.peek($t3)
+                }
+            }
+
+            #[doc(hidden)]
+            #[allow(non_snake_case)]
+            pub fn $t3(marker: Marker) -> $t3 {
+                match marker {}
+            }
         )+
     };
 }
@@ -819,7 +899,11 @@ impl<T: JoinedPunct> Token for (T, Span) {
     }
 }
 
-impl<T: JoinedPunct> Punct for (T, Span) {}
+impl<T: JoinedPunct> Punct for (T, Span) {
+    fn peek(input: ParseStream<'_>) -> bool {
+        input.parse_undo::<(T, Span)>().is_ok()
+    }
+}
 
 #[derive(Debug, Clone)]
 pub(crate) enum WhiteSpace {
@@ -1054,12 +1138,16 @@ macro_rules! keywords {
             $crate::token::concat_idents!(struct_name = keyword_, $kw {
                 #[derive(Debug, Clone)]
                 #[allow(non_camel_case_types)]
-                pub struct struct_name($crate::Span);
+                pub struct struct_name {
+                    span: $crate::Span
+                }
 
                 impl struct_name {
                     #[allow(dead_code)]
                     pub fn new(input: $crate::ParseStream<'_>) -> Self {
-                        Self(input.empty_span())
+                        Self {
+                            span: input.empty_span()
+                        }
                     }
                 }
 
@@ -1067,7 +1155,9 @@ macro_rules! keywords {
                     fn parse(input: $crate::ParseStream<'_>) -> $crate::Result<Self> {
                         let ident: $crate::token::Ident = input.parse()?;
                         if ident.string() == $kw {
-                            $crate::Result::Ok(Self(ident.span().to_owned()))
+                            $crate::Result::Ok(Self {
+                                span: ident.span().to_owned()
+                            })
                         } else {
                             $crate::Result::Err(input.unexpected_token(
                                 ::std::collections::HashSet::from_iter([$kw.to_string()]),
@@ -1080,16 +1170,22 @@ macro_rules! keywords {
 
                 impl $crate::token::Token for struct_name {
                     fn span(&self) -> &$crate::Span {
-                        &self.0
+                        &self.span
                     }
 
                     fn set_span(&mut self, span: $crate::Span) {
-                        self.0 = span;
+                        self.span = span;
                     }
 
                     fn display() -> String {
                         $kw.to_string()
                     }
+                }
+
+                #[doc(hidden)]
+                #[allow(dead_code)]
+                pub fn struct_name(marker: $crate::Marker) -> struct_name {
+                    match marker {}
                 }
             });
         )+
