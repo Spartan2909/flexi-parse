@@ -5,7 +5,7 @@ edition = "2021"
 description = "Simple, flexible parsing"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-documentation = "docs.rs/flexi-parse/latest/"
+documentation = "https://docs.rs/flexi-parse/latest/"
 keywords = ["parsing", "parse"]
 categories = ["parsing"]
 
