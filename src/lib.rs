@@ -276,7 +276,7 @@ impl TokenStream {
 
     /// Removes all whitespace that doesn't come at the start of a line.
     ///
-    /// Note that the `parse*` functions will remove all whitespace.
+    /// Note that the `parse*` functions remove all whitespace.
     pub fn prepare_whitespace(&mut self) {
         self.filter(|tokens| {
             let mut indices = vec![];
@@ -290,6 +290,23 @@ impl TokenStream {
                     }
                 } else {
                     post_newline = false;
+                }
+            }
+            indices
+        });
+    }
+
+    /// Removes all non-newline whitespace from `self`.
+    /// 
+    /// Note that the `parse*` functions will remove all whitespace.
+    pub fn remove_blank_space(&mut self) {
+        self.filter(|tokens| {
+            let mut indices = vec![];
+            for (index, (_, token)) in tokens.tokens.iter().enumerate() {
+                if let Entry::WhiteSpace(whitespace) = token {
+                    if !matches!(whitespace, WhiteSpace::NewLine(_)) {
+                        indices.push(index)
+                    }
                 }
             }
             indices
