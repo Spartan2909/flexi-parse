@@ -1152,7 +1152,103 @@ impl Token for CarriageReturn {
 /// use flexi_parse::parse_string;
 /// mod kw {
 ///     use flexi_parse::keywords;
-///     keywords!["let", "if"];
+///     keywords![var, then];
+/// }
+///
+/// # fn main() {
+/// let kw1: kw::var = parse_string("var".to_string()).unwrap();
+/// let kw2: kw::then = parse_string("then".to_string()).unwrap();
+/// # }
+/// ```
+#[macro_export]
+macro_rules! keywords {
+    [ $( $kw:ident ),+ $(,)? ] => {
+        use $crate::token::Token as _;
+        $(
+            #[derive(Debug, Clone)]
+            #[allow(non_camel_case_types)]
+            pub struct $kw {
+                span: $crate::Span
+            }
+
+            impl $kw {
+                #[allow(dead_code)]
+                pub fn new(input: $crate::ParseStream<'_>) -> Self {
+                    Self {
+                        span: input.empty_span()
+                    }
+                }
+            }
+
+            impl $crate::Parse for $kw {
+                fn parse(input: $crate::ParseStream<'_>) -> $crate::Result<Self> {
+                    let ident: $crate::token::Ident = input.parse()?;
+                    if ident.string() == stringify!($kw) {
+                        $crate::Result::Ok(Self {
+                            span: ident.span().to_owned()
+                        })
+                    } else {
+                        $crate::Result::Err(input.unexpected_token(
+                            ::std::collections::HashSet::from_iter([stringify!($kw).to_string()]),
+                        ))
+                    }
+                }
+            }
+
+            impl $crate::private::Sealed for $kw {}
+
+            impl $crate::token::Token for $kw {
+                fn span(&self) -> &$crate::Span {
+                    &self.span
+                }
+
+                fn set_span(&mut self, span: $crate::Span) {
+                    self.span = span;
+                }
+
+                fn display() -> String {
+                    stringify!($kw).to_string()
+                }
+            }
+
+            impl ::std::cmp::PartialEq for $kw {
+                fn eq(&self, _other: &Self) -> bool {
+                    true
+                }
+            }
+
+            #[doc(hidden)]
+            #[allow(dead_code)]
+            pub fn $kw(marker: $crate::Marker) -> $kw {
+                match marker {}
+            }
+        )+
+
+        /// Parses non-keyword identifiers.
+        #[allow(dead_code)]
+        pub fn ident(input: $crate::ParseStream<'_>) -> $crate::Result<$crate::token::Ident> {
+            let ident: $crate::token::Ident = input.parse()?;
+            if [$( stringify!($kw) ),+].contains(&ident.string().as_str()) {
+                $crate::Result::Err(input.unexpected_token(
+                    ::std::collections::HashSet::from_iter(["an identifier".to_string()]),
+                ))
+            } else {
+                $crate::Result::Ok(ident)
+            }
+        }
+    };
+}
+
+pub use keywords;
+
+/// Generate types for keywords, with the type names prefixed with `keyword_`.
+///
+/// ## Usage
+/// ```
+/// use flexi_parse::parse_string;
+/// mod kw {
+///     use flexi_parse::keywords_prefixed;
+///     keywords_prefixed!["let", "if"];
 /// }
 ///
 /// # fn main() {
@@ -1161,7 +1257,7 @@ impl Token for CarriageReturn {
 /// # }
 /// ```
 #[macro_export]
-macro_rules! keywords {
+macro_rules! keywords_prefixed {
     [ $( $kw:tt ),+ $(,)? ] => {
         use $crate::token::Token as _;
         $(
@@ -1241,4 +1337,4 @@ macro_rules! keywords {
     };
 }
 
-pub use keywords;
+pub use keywords_prefixed;

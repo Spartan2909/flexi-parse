@@ -4,9 +4,9 @@ use crate::Parser;
 use super::scan;
 
 mod kw {
-    use crate::keywords;
+    use crate::keywords_prefixed;
 
-    keywords!["let", "if", "for"];
+    keywords_prefixed!["let", "if", "for"];
 }
 
 #[test]

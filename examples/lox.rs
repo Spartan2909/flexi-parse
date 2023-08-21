@@ -18,9 +18,9 @@ use flexi_parse::Punct;
 use flexi_parse::Result;
 
 mod kw {
-    use flexi_parse::keywords;
+    use flexi_parse::keywords_prefixed;
 
-    keywords![
+    keywords_prefixed![
         "and", "class", "else", "false", "for", "fun", "if", "nil", "or", "print", "return",
         "super", "this", "true", "var", "while"
     ];
