@@ -430,6 +430,12 @@ impl LitInt {
     }
 }
 
+impl PartialEq for LitInt {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
+
 impl Parse for LitInt {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         if let Ok(lit) = Self::parse_impl(input) {
@@ -492,6 +498,12 @@ impl LitFloat {
             value: start.value as f64 + int_to_decimal(end.value),
             span: Span::new(start.span.start, end.span.end, Rc::clone(&input.source)),
         })
+    }
+}
+
+impl PartialEq for LitFloat {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
     }
 }
 
@@ -585,6 +597,12 @@ macro_rules! tokens {
             impl Punct for $t1 {
                 fn peek(input: ParseStream<'_>) -> bool {
                     input.peek($t1)
+                }
+            }
+
+            impl PartialEq for $t1 {
+                fn eq(&self, _other: &Self) -> bool {
+                    true
                 }
             }
 
@@ -682,6 +700,12 @@ macro_rules! tokens {
                 }
             }
 
+            impl PartialEq for $t2 {
+                fn eq(&self, _other: &Self) -> bool {
+                    true
+                }
+            }
+
             #[doc(hidden)]
             #[allow(non_snake_case)]
             pub fn $t2(marker: Marker) -> $t2 {
@@ -754,6 +778,12 @@ macro_rules! tokens {
             impl Punct for $t3 {
                 fn peek(input: ParseStream<'_>) -> bool {
                     input.peek($t3)
+                }
+            }
+
+            impl PartialEq for $t3 {
+                fn eq(&self, _other: &Self) -> bool {
+                    true
                 }
             }
 
@@ -1179,6 +1209,12 @@ macro_rules! keywords {
 
                     fn display() -> String {
                         $kw.to_string()
+                    }
+                }
+
+                impl ::std::cmp::PartialEq for struct_name {
+                    fn eq(&self, _other: &Self) -> bool {
+                        true
                     }
                 }
 

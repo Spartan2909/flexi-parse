@@ -17,6 +17,7 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::fmt;
 use std::fs;
 use std::io;
 use std::marker::PhantomData;
@@ -46,7 +47,7 @@ mod proc_macro;
 /// A struct representing a file of source code.
 ///
 /// This type is the input to [`parse_source`].
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct SourceFile {
     name: String,
     path: Option<String>,
@@ -83,6 +84,15 @@ impl SourceFile {
 
     fn id(&self) -> &String {
         self.path.as_ref().unwrap_or(&self.name)
+    }
+}
+
+impl fmt::Debug for SourceFile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SourceFile")
+            .field("name", &self.name)
+            .field("path", &self.path)
+            .finish()
     }
 }
 
@@ -297,7 +307,7 @@ impl TokenStream {
     }
 
     /// Removes all non-newline whitespace from `self`.
-    /// 
+    ///
     /// Note that the `parse*` functions will remove all whitespace.
     pub fn remove_blank_space(&mut self) {
         self.filter(|tokens| {
@@ -305,7 +315,7 @@ impl TokenStream {
             for (index, (_, token)) in tokens.tokens.iter().enumerate() {
                 if let Entry::WhiteSpace(whitespace) = token {
                     if !matches!(whitespace, WhiteSpace::NewLine(_)) {
-                        indices.push(index)
+                        indices.push(index);
                     }
                 }
             }
@@ -403,11 +413,13 @@ impl<'a> ParseBuffer<'a> {
         }
     }
 
-    /// Repeatedly skips tokens until `function` returns true.
+    /// Repeatedly skips tokens until `function` returns true or `self` is
+    /// empty.
     pub fn synchronise<F: FnMut(ParseStream<'_>) -> bool>(&self, mut function: F) {
         while !self.is_empty() && !function(self) {
             let _ = self.next();
         }
+        let _ = self.next();
     }
 
     fn try_parse<T: Parse>(&self) -> Result<T> {

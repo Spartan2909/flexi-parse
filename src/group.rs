@@ -98,6 +98,12 @@ pub trait Delimiters: From<Span> {
 #[derive(Debug, Clone)]
 pub struct Parentheses(pub Span);
 
+impl PartialEq for Parentheses {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
 impl From<Span> for Parentheses {
     fn from(value: Span) -> Self {
         Parentheses(value)
@@ -114,6 +120,12 @@ impl Delimiters for Parentheses {
 #[derive(Debug, Clone)]
 pub struct Brackets(pub Span);
 
+impl PartialEq for Brackets {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
 impl From<Span> for Brackets {
     fn from(value: Span) -> Self {
         Brackets(value)
@@ -129,6 +141,12 @@ impl Delimiters for Brackets {
 /// The delimiters `{` `}`.
 #[derive(Debug, Clone)]
 pub struct Braces(pub Span);
+
+impl PartialEq for Braces {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
 
 impl From<Span> for Braces {
     fn from(value: Span) -> Self {
@@ -167,6 +185,12 @@ impl Delimiters for AngleBrackets {
 #[derive(Debug, Clone)]
 pub struct SingleQuotes(pub Span);
 
+impl PartialEq for SingleQuotes {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
 impl From<Span> for SingleQuotes {
     fn from(value: Span) -> Self {
         SingleQuotes(value)
@@ -182,6 +206,12 @@ impl Delimiters for SingleQuotes {
 /// The delimiters `"` `"`.
 #[derive(Debug, Clone)]
 pub struct DoubleQuotes(pub Span);
+
+impl PartialEq for DoubleQuotes {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
 
 impl From<Span> for DoubleQuotes {
     fn from(value: Span) -> Self {
@@ -216,6 +246,11 @@ impl<D: Delimiters> Group<D> {
     /// Returns a token representing the delimiters of this group.
     pub fn delimiters(&self) -> D {
         D::from(self.span.clone())
+    }
+
+    /// Removes whitespace from the tokenstream in `self`.
+    pub fn remove_whitespace(&mut self) {
+        self.token_stream.remove_whitespace();
     }
 }
 

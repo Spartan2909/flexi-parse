@@ -83,7 +83,7 @@ fn unexpected_token_message(expected: &HashSet<String>) -> String {
             iter.next().unwrap()
         )
     } else {
-        let mut message = "Expected one of ".to_string();
+        let mut message = "Expected one of: ".to_string();
         for (i, token) in expected.iter().enumerate() {
             message.push_str(token);
             if i + 1 < expected.len() {
