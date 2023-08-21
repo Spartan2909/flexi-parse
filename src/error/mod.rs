@@ -226,11 +226,7 @@ impl fmt::Display for Error {
                     write!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
                 }
                 ErrorKind::UnexpectedToken { expected, span } => {
-                    writeln!(
-                        f,
-                        "[E{:02}] Error: Unexpected token",
-                        error.kind.code()
-                    )?;
+                    writeln!(f, "[E{:02}] Error: Unexpected token", error.kind.code())?;
                     let (line, col) = span.start_location();
                     writeln!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
                     write!(f, "{}", unexpected_token_message(expected))?;

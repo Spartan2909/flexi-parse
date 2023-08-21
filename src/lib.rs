@@ -215,6 +215,19 @@ pub fn parse_string<T: Parse>(source: String) -> Result<T> {
     parse_source(source)
 }
 
+/// Attempts to repeatedly parse `input` into the given syntax tree node,
+/// using `T`'s default parsing implementation, and continuing until `input` is
+/// exhausted.
+pub fn parse_repeated<T: Parse>(input: ParseStream<'_>) -> Result<Vec<T>> {
+    let mut items = vec![];
+
+    while !input.is_empty() {
+        items.push(input.parse()?);
+    }
+
+    Ok(items)
+}
+
 /// Gets the `Ok` value, panicking with a formatted error message if the value
 /// is `Err`.
 /// ## Panics
@@ -317,7 +330,6 @@ pub struct ParseBuffer<'a> {
     cursor: Cursor<'a>,
     source: Rc<SourceFile>,
     error: RefCell<Error>,
-    custom_errors: RefCell<Vec<String>>,
 }
 
 impl<'a> ParseBuffer<'a> {
@@ -326,7 +338,6 @@ impl<'a> ParseBuffer<'a> {
             cursor,
             source,
             error: RefCell::new(Error::empty()),
-            custom_errors: RefCell::new(vec![]),
         }
     }
 
@@ -347,26 +358,15 @@ impl<'a> ParseBuffer<'a> {
         self.cursor.eof()
     }
 
-    fn custom_error_code(&self, message: String) -> u16 {
-        if let Some(index) = 
-            self.custom_errors.borrow().iter().position(|m| m == &message) {
-                index as u16
-            } else {
-                let index = self.custom_errors.borrow().len() as u16;
-                self.custom_errors.borrow_mut().push(message);
-                index
-            }
-        
-    }
-
-    /// Creates a new error at the given location with the given message.
-    pub fn new_error<T: Into<Span>>(&self, message: String, location: T) -> Error {
+    /// Creates a new error at the given location with the given message and
+    /// code.
+    pub fn new_error<T: Into<Span>>(&self, message: String, location: T, code: u16) -> Error {
         Error::new(
             Rc::clone(&self.source),
             ErrorKind::Custom {
-                message: message.clone(),
+                message,
                 span: location.into(),
-                code: self.custom_error_code(message),
+                code,
             },
         )
     }
