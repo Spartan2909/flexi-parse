@@ -1162,7 +1162,7 @@ impl Token for CarriageReturn {
 /// ```
 #[macro_export]
 macro_rules! keywords {
-    [ $( $kw:tt ),+ ] => {
+    [ $( $kw:tt ),+ $(,)? ] => {
         use $crate::token::Token as _;
         $(
             $crate::token::concat_idents!(struct_name = keyword_, $kw {
