@@ -20,8 +20,8 @@
 //!
 //! # The `Delimiter` trait
 //! The `Delimiter` trait is used to provide information to [`Group`] on how to
-//! parse the delimiters. It is intended to be implemented for ZSTs, as all of
-//! the information it carries is contained in associated types and constant.
+//! parse the delimiters. It is typically implemented for newtype structs
+//! wrapping a span.
 //!
 //! ## Example
 //! Below is an example of a custom set of delimiters.
@@ -33,8 +33,15 @@
 //! # use flexi_parse::parse;
 //! # use flexi_parse::parse_string;
 //! # use flexi_parse::Punct;
+//! # use flexi_parse::Span;
 //! #
-//! struct AtDelimiters;
+//! struct AtDelimiters(Span);
+//!
+//! impl From<Span> for AtDelimiters {
+//!     fn from(value: Span) -> Self {
+//!         AtDelimiters(value)
+//!     }
+//! }
 //!
 //! impl Delimiters for AtDelimiters {
 //!     type Start = Punct!["@"];
@@ -76,7 +83,7 @@ use std::rc::Rc;
 /// For more information, see the [module documentation][module].
 ///
 /// [module]: crate::group#the-delimiter-trait
-pub trait Delimiters {
+pub trait Delimiters: From<Span> {
     /// The opening delimiter, e.g. `(`.
     type Start: Punct;
     /// The closing delimiter, e.g. `)`.
@@ -88,8 +95,14 @@ pub trait Delimiters {
 }
 
 /// The delimiters `(` `)`.
-#[derive(Debug, Clone, Copy)]
-pub struct Parentheses;
+#[derive(Debug, Clone)]
+pub struct Parentheses(pub Span);
+
+impl From<Span> for Parentheses {
+    fn from(value: Span) -> Self {
+        Parentheses(value)
+    }
+}
 
 impl Delimiters for Parentheses {
     type Start = LeftParen;
@@ -98,8 +111,14 @@ impl Delimiters for Parentheses {
 }
 
 /// The delimiters `[` `]`.
-#[derive(Debug, Clone, Copy)]
-pub struct Brackets;
+#[derive(Debug, Clone)]
+pub struct Brackets(pub Span);
+
+impl From<Span> for Brackets {
+    fn from(value: Span) -> Self {
+        Brackets(value)
+    }
+}
 
 impl Delimiters for Brackets {
     type Start = LeftBracket;
@@ -108,8 +127,14 @@ impl Delimiters for Brackets {
 }
 
 /// The delimiters `{` `}`.
-#[derive(Debug, Clone, Copy)]
-pub struct Braces;
+#[derive(Debug, Clone)]
+pub struct Braces(pub Span);
+
+impl From<Span> for Braces {
+    fn from(value: Span) -> Self {
+        Braces(value)
+    }
+}
 
 impl Delimiters for Braces {
     type Start = LeftBrace;
@@ -118,8 +143,14 @@ impl Delimiters for Braces {
 }
 
 /// The delimiters `<` `>`.
-#[derive(Debug, Clone, Copy)]
-pub struct AngleBrackets;
+#[derive(Debug, Clone)]
+pub struct AngleBrackets(pub Span);
+
+impl From<Span> for AngleBrackets {
+    fn from(value: Span) -> Self {
+        AngleBrackets(value)
+    }
+}
 
 impl Delimiters for AngleBrackets {
     type Start = LAngle;
@@ -133,8 +164,14 @@ impl Delimiters for AngleBrackets {
 ///
 /// [`LitStrSingleQuote`]: crate::token::LitStrSingleQuote
 /// [`LitChar`]: crate::token::LitChar
-#[derive(Debug, Clone, Copy)]
-pub struct SingleQuotes;
+#[derive(Debug, Clone)]
+pub struct SingleQuotes(pub Span);
+
+impl From<Span> for SingleQuotes {
+    fn from(value: Span) -> Self {
+        SingleQuotes(value)
+    }
+}
 
 impl Delimiters for SingleQuotes {
     type Start = SingleQuote;
@@ -143,8 +180,14 @@ impl Delimiters for SingleQuotes {
 }
 
 /// The delimiters `"` `"`.
-#[derive(Debug, Clone, Copy)]
-pub struct DoubleQuotes;
+#[derive(Debug, Clone)]
+pub struct DoubleQuotes(pub Span);
+
+impl From<Span> for DoubleQuotes {
+    fn from(value: Span) -> Self {
+        DoubleQuotes(value)
+    }
+}
 
 impl Delimiters for DoubleQuotes {
     type Start = DoubleQuote;
@@ -168,6 +211,11 @@ impl<D: Delimiters> Group<D> {
     /// Returns the contained [`TokenStream`].
     pub fn into_token_stream(self) -> TokenStream {
         self.token_stream
+    }
+
+    /// Returns a token representing the delimiters of this group.
+    pub fn delimiters(&self) -> D {
+        D::from(self.span.clone())
     }
 }
 
