@@ -163,7 +163,7 @@ pub trait Parser: Sized {
     /// The return type of this parser.
     type Output;
 
-    /// Parses the a tokenstream into the relevant syntax tree node.
+    /// Parses a tokenstream into the relevant syntax tree node.
     fn parse(self, tokens: TokenStream) -> Result<Self::Output>;
 }
 
