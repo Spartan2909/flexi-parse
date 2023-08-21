@@ -317,6 +317,7 @@ pub struct ParseBuffer<'a> {
     cursor: Cursor<'a>,
     source: Rc<SourceFile>,
     error: RefCell<Error>,
+    custom_errors: RefCell<Vec<String>>,
 }
 
 impl<'a> ParseBuffer<'a> {
@@ -325,6 +326,7 @@ impl<'a> ParseBuffer<'a> {
             cursor,
             source,
             error: RefCell::new(Error::empty()),
+            custom_errors: RefCell::new(vec![]),
         }
     }
 
@@ -345,13 +347,26 @@ impl<'a> ParseBuffer<'a> {
         self.cursor.eof()
     }
 
+    fn custom_error_code(&self, message: String) -> u16 {
+        if let Some(index) = 
+            self.custom_errors.borrow().iter().position(|m| m == &message) {
+                index as u16
+            } else {
+                let index = self.custom_errors.borrow().len() as u16;
+                self.custom_errors.borrow_mut().push(message);
+                index
+            }
+        
+    }
+
     /// Creates a new error at the given location with the given message.
     pub fn new_error<T: Into<Span>>(&self, message: String, location: T) -> Error {
         Error::new(
             Rc::clone(&self.source),
             ErrorKind::Custom {
-                message,
+                message: message.clone(),
                 span: location.into(),
+                code: self.custom_error_code(message),
             },
         )
     }

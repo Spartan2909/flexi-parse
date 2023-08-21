@@ -110,10 +110,10 @@ impl From<&SingleError> for Report {
     fn from(value: &SingleError) -> Self {
         let mut builder =
             ariadne::Report::build((&value.kind).into(), value.source.id(), value.kind.start())
-                .with_code(value.kind.discriminant());
+                .with_code(value.kind.code());
         match &value.kind {
             ErrorKind::Silent => unreachable!(),
-            ErrorKind::Custom { message, span } => {
+            ErrorKind::Custom { message, span, .. } => {
                 builder.set_message(message);
                 builder.add_label(Label::new(span.clone()).with_color(Color::Red));
             }

@@ -22,13 +22,9 @@ mod ariadne;
 pub use self::ariadne::Report;
 
 #[derive(Debug, Clone)]
-#[repr(u8)]
+#[repr(u16)]
 pub(crate) enum ErrorKind {
     Silent,
-    Custom {
-        message: String,
-        span: Span,
-    },
     UnknownCharacter(Span),
     UnterminatedGroup {
         start: String,
@@ -42,13 +38,23 @@ pub(crate) enum ErrorKind {
         span: Span,
     },
     EndOfFile(usize),
+    Custom {
+        message: String,
+        span: Span,
+        code: u16,
+    },
 }
 
 impl ErrorKind {
-    fn discriminant(&self) -> u8 {
-        // SAFETY: ErrorKind is `repr(u8)`, making it a `repr(C)` struct with
-        // a `u8` as its first field
-        unsafe { *<*const ErrorKind>::from(self).cast::<u8>() }
+    fn code(&self) -> u16 {
+        // SAFETY: ErrorKind is `repr(u16)`, making it a `repr(C)` struct with
+        // a `u16` as its first field
+        let discriminant = unsafe { *<*const ErrorKind>::from(self).cast::<u16>() };
+        if let ErrorKind::Custom { code, .. } = self {
+            discriminant + code
+        } else {
+            discriminant
+        }
     }
 
     fn start(&self) -> usize {
@@ -168,8 +174,8 @@ impl fmt::Display for Error {
         for error in &self.errors {
             match &error.kind {
                 ErrorKind::Silent => {}
-                ErrorKind::Custom { message, span } => {
-                    writeln!(f, "[E{:02}] Error: {}", error.kind.discriminant(), message)?;
+                ErrorKind::Custom { message, span, .. } => {
+                    writeln!(f, "[E{:02}] Error: {}", error.kind.code(), message)?;
                     let (line, col) = span.start_location();
                     write!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
                 }
@@ -177,7 +183,7 @@ impl fmt::Display for Error {
                     writeln!(
                         f,
                         "[E{:02}] Error: Unrecognised character",
-                        error.kind.discriminant()
+                        error.kind.code()
                     )?;
                     let (line, col) = span.start_location();
                     write!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
@@ -186,7 +192,7 @@ impl fmt::Display for Error {
                     writeln!(
                         f,
                         "[E{:02}] Error: Unmatched '{}'",
-                        error.kind.discriminant(),
+                        error.kind.code(),
                         start
                     )?;
                     let (line, col) = span.start_location();
@@ -196,7 +202,7 @@ impl fmt::Display for Error {
                     writeln!(
                         f,
                         "[E{:02}] Error: Unterminated character literal",
-                        error.kind.discriminant()
+                        error.kind.code()
                     )?;
                     let (line, col) = span.start_location();
                     write!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
@@ -205,7 +211,7 @@ impl fmt::Display for Error {
                     writeln!(
                         f,
                         "[E{:02}] Error: Character literals must be exactly one character long",
-                        error.kind.discriminant()
+                        error.kind.code()
                     )?;
                     let (line, col) = span.start_location();
                     write!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
@@ -214,7 +220,7 @@ impl fmt::Display for Error {
                     writeln!(
                         f,
                         "[E{:02}] Error: Unterminated string literal",
-                        error.kind.discriminant()
+                        error.kind.code()
                     )?;
                     let (line, col) = span.start_location();
                     write!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
@@ -223,7 +229,7 @@ impl fmt::Display for Error {
                     writeln!(
                         f,
                         "[E{:02}] Error: Unexpected token",
-                        error.kind.discriminant()
+                        error.kind.code()
                     )?;
                     let (line, col) = span.start_location();
                     writeln!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
