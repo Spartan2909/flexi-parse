@@ -493,6 +493,11 @@ impl<'a> ParseBuffer<'a> {
         }
     }
 
+    /// Gets the span of the current token, unless `self` is empty.
+    pub fn current_span(&self) -> Result<Span> {
+        Ok(self.current()?.1.span().to_owned())
+    }
+
     fn get_relative(&self, offset: isize) -> Result<&'a (usize, Entry)> {
         self.cursor.get_relative(offset).ok_or(Error::new(
             Rc::clone(&self.source),
