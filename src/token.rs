@@ -620,7 +620,8 @@ macro_rules! tokens {
             #[derive(Debug, Clone)]
             #[doc = $doc1]
             pub struct $t1 {
-                span: Span,
+                /// The span covered by this token.
+                pub span: Span,
             }
 
             impl Parse for $t1 {
@@ -706,7 +707,8 @@ macro_rules! tokens {
             #[derive(Debug, Clone)]
             #[doc = $doc2]
             pub struct $t2 {
-                span: Span,
+                /// The span covered by this token.
+                pub span: Span,
             }
 
             impl $t2 {
@@ -782,7 +784,8 @@ macro_rules! tokens {
             #[derive(Debug, Clone)]
             #[doc = $doc3]
             pub struct $t3 {
-                span: Span,
+                /// The span covered by this token.
+                pub span: Span,
             }
 
             impl $t3 {
@@ -1011,20 +1014,28 @@ pub(crate) enum WhiteSpace {
 impl WhiteSpace {
     pub(crate) fn span(&self) -> &Span {
         match self {
-            WhiteSpace::Space2(Space2(span))
-            | WhiteSpace::Tab(Tab(span))
-            | WhiteSpace::NewLine(NewLine(span))
-            | WhiteSpace::CarriageReturn(CarriageReturn(span)) => span,
+            WhiteSpace::Space2(Space2 { span })
+            | WhiteSpace::Tab(Tab { span })
+            | WhiteSpace::NewLine(NewLine { span })
+            | WhiteSpace::CarriageReturn(CarriageReturn { span }) => span,
         }
     }
 
     #[cfg(feature = "proc-macro2")]
     pub(crate) fn set_span(&mut self, span: Span) {
         match self {
-            WhiteSpace::Space2(Space2(original_span))
-            | WhiteSpace::Tab(Tab(original_span))
-            | WhiteSpace::NewLine(NewLine(original_span))
-            | WhiteSpace::CarriageReturn(CarriageReturn(original_span)) => *original_span = span,
+            WhiteSpace::Space2(Space2 {
+                span: original_span,
+            })
+            | WhiteSpace::Tab(Tab {
+                span: original_span,
+            })
+            | WhiteSpace::NewLine(NewLine {
+                span: original_span,
+            })
+            | WhiteSpace::CarriageReturn(CarriageReturn {
+                span: original_span,
+            }) => *original_span = span,
         }
     }
 
@@ -1052,7 +1063,10 @@ impl PartialEq for WhiteSpace {
 
 /// `  `
 #[derive(Debug, Clone)]
-pub struct Space2(pub(crate) Span);
+pub struct Space2 {
+    /// The span covered by this token.
+    pub span: Span,
+}
 
 impl Parse for Space2 {
     fn parse(input: ParseStream) -> Result<Self> {
@@ -1069,11 +1083,11 @@ impl Sealed for Space2 {}
 
 impl Token for Space2 {
     fn span(&self) -> &Span {
-        &self.0
+        &self.span
     }
 
     fn set_span(&mut self, span: Span) {
-        self.0 = span;
+        self.span = span;
     }
 
     fn display() -> String {
@@ -1081,18 +1095,29 @@ impl Token for Space2 {
     }
 }
 
+#[doc(hidden)]
+#[allow(non_snake_case)]
+pub fn Space2(marker: Marker) -> Space2 {
+    match marker {}
+}
+
 /// `    `
 #[derive(Debug, Clone)]
-pub struct Space4(pub(crate) Span);
+pub struct Space4 {
+    /// The span covered by this token.
+    pub span: Span,
+}
 
 impl Space4 {
     fn parse_impl(input: ParseStream<'_>) -> Result<Self> {
         let start: Space2 = input.parse()?;
         let end: Space2 = input.parse()?;
-        if start.0.end != end.0.start {
+        if start.span.end != end.span.start {
             return Err(Error::empty());
         }
-        Ok(Space4(Span::across(start.span(), end.span())))
+        Ok(Space4 {
+            span: Span::across(start.span(), end.span()),
+        })
     }
 }
 
@@ -1108,11 +1133,11 @@ impl Sealed for Space4 {}
 
 impl Token for Space4 {
     fn span(&self) -> &Span {
-        &self.0
+        &self.span
     }
 
     fn set_span(&mut self, span: Span) {
-        self.0 = span;
+        self.span = span;
     }
 
     fn display() -> String {
@@ -1120,9 +1145,18 @@ impl Token for Space4 {
     }
 }
 
+#[doc(hidden)]
+#[allow(non_snake_case)]
+pub fn Space4(marker: Marker) -> Space4 {
+    match marker {}
+}
+
 /// `\t`
 #[derive(Debug, Clone)]
-pub struct Tab(pub(crate) Span);
+pub struct Tab {
+    /// The span covered by this token.
+    pub span: Span,
+}
 
 impl Parse for Tab {
     fn parse(input: ParseStream) -> Result<Self> {
@@ -1138,11 +1172,11 @@ impl Sealed for Tab {}
 
 impl Token for Tab {
     fn span(&self) -> &Span {
-        &self.0
+        &self.span
     }
 
     fn set_span(&mut self, span: Span) {
-        self.0 = span;
+        self.span = span;
     }
 
     fn display() -> String {
@@ -1150,9 +1184,18 @@ impl Token for Tab {
     }
 }
 
+#[doc(hidden)]
+#[allow(non_snake_case)]
+pub fn Tab(marker: Marker) -> Tab {
+    match marker {}
+}
+
 /// `\n`
 #[derive(Debug, Clone)]
-pub struct NewLine(pub(crate) Span);
+pub struct NewLine {
+    /// The span covered by this token.
+    pub span: Span,
+}
 
 impl Parse for NewLine {
     fn parse(input: ParseStream) -> Result<Self> {
@@ -1168,11 +1211,11 @@ impl Sealed for NewLine {}
 
 impl Token for NewLine {
     fn span(&self) -> &Span {
-        &self.0
+        &self.span
     }
 
     fn set_span(&mut self, span: Span) {
-        self.0 = span;
+        self.span = span;
     }
 
     fn display() -> String {
@@ -1180,9 +1223,18 @@ impl Token for NewLine {
     }
 }
 
+#[doc(hidden)]
+#[allow(non_snake_case)]
+pub fn NewLine(marker: Marker) -> NewLine {
+    match marker {}
+}
+
 /// `u+000D`
 #[derive(Debug, Clone)]
-pub struct CarriageReturn(pub(crate) Span);
+pub struct CarriageReturn {
+    /// The span covered by this token.
+    pub span: Span,
+}
 
 impl Parse for CarriageReturn {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
@@ -1198,16 +1250,22 @@ impl Sealed for CarriageReturn {}
 
 impl Token for CarriageReturn {
     fn span(&self) -> &Span {
-        &self.0
+        &self.span
     }
 
     fn set_span(&mut self, span: Span) {
-        self.0 = span;
+        self.span = span;
     }
 
     fn display() -> String {
         "a carriage return".to_string()
     }
+}
+
+#[doc(hidden)]
+#[allow(non_snake_case)]
+pub fn CarriageReturn(marker: Marker) -> CarriageReturn {
+    match marker {}
 }
 
 /// Generate types for keywords.

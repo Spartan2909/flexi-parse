@@ -89,11 +89,9 @@ impl Scanner {
             }
             ' ' if self.peek(1).is_ok_and(|c| c == ' ') => {
                 self.current += 2;
-                Entry::WhiteSpace(WhiteSpace::Space2(Space2(Span::new(
-                    self.current - 2,
-                    self.current,
-                    Rc::clone(&self.source),
-                ))))
+                Entry::WhiteSpace(WhiteSpace::Space2(Space2 {
+                    span: Span::new(self.current - 2, self.current, Rc::clone(&self.source)),
+                }))
             }
             ' ' => {
                 self.current += 1;
@@ -102,17 +100,17 @@ impl Scanner {
             '\t' => {
                 let span = Span::new(self.current, self.current + 1, Rc::clone(&self.source));
                 self.current += 1;
-                Entry::WhiteSpace(WhiteSpace::Tab(Tab(span)))
+                Entry::WhiteSpace(WhiteSpace::Tab(Tab { span }))
             }
             '\n' => {
                 let span = Span::new(self.current, self.current + 1, Rc::clone(&self.source));
                 self.current += 1;
-                Entry::WhiteSpace(WhiteSpace::NewLine(NewLine(span)))
+                Entry::WhiteSpace(WhiteSpace::NewLine(NewLine { span }))
             }
             '\u{000D}' => {
                 let span = Span::new(self.current, self.current + 1, Rc::clone(&self.source));
                 self.current += 1;
-                Entry::WhiteSpace(WhiteSpace::CarriageReturn(CarriageReturn(span)))
+                Entry::WhiteSpace(WhiteSpace::CarriageReturn(CarriageReturn { span }))
             }
             _ => {
                 self.current += 1;
