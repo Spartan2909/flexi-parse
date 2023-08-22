@@ -19,6 +19,7 @@ use crate::ParseStream;
 use crate::Result;
 use crate::Span;
 
+use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::fmt;
 use std::rc::Rc;
@@ -82,6 +83,20 @@ impl PartialEq for LitStrDoubleQuote {
     }
 }
 
+impl Eq for LitStrDoubleQuote {}
+
+impl PartialOrd for LitStrDoubleQuote {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for LitStrDoubleQuote {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.string.cmp(&other.string)
+    }
+}
+
 impl Parse for LitStrDoubleQuote {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let group: Group<DoubleQuotes> = input.parse().map_err(|mut err| {
@@ -138,6 +153,20 @@ impl PartialEq for LitStrSingleQuote {
     }
 }
 
+impl Eq for LitStrSingleQuote {}
+
+impl PartialOrd for LitStrSingleQuote {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for LitStrSingleQuote {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.string.cmp(&other.string)
+    }
+}
+
 impl Parse for LitStrSingleQuote {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let group: Group<SingleQuotes> = input.parse().map_err(|mut err| {
@@ -191,6 +220,20 @@ impl LitChar {
 impl PartialEq for LitChar {
     fn eq(&self, other: &Self) -> bool {
         self.ch == other.ch
+    }
+}
+
+impl Eq for LitChar {}
+
+impl PartialOrd for LitChar {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for LitChar {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.ch.cmp(&other.ch)
     }
 }
 
@@ -270,6 +313,8 @@ impl PartialEq for Ident {
         self.string == other.string
     }
 }
+
+impl Eq for Ident {}
 
 impl TryFrom<Entry> for Ident {
     type Error = Entry;
@@ -436,6 +481,20 @@ impl PartialEq for LitInt {
     }
 }
 
+impl Eq for LitInt {}
+
+impl PartialOrd for LitInt {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for LitInt {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.value.cmp(&other.value)
+    }
+}
+
 impl Parse for LitInt {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         if let Ok(lit) = Self::parse_impl(input) {
@@ -504,6 +563,12 @@ impl LitFloat {
 impl PartialEq for LitFloat {
     fn eq(&self, other: &Self) -> bool {
         self.value == other.value
+    }
+}
+
+impl PartialOrd for LitFloat {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.value.partial_cmp(&other.value)
     }
 }
 
@@ -1216,6 +1281,8 @@ macro_rules! keywords {
                     true
                 }
             }
+
+            impl ::std::cmp::Eq for $kw {}
 
             #[doc(hidden)]
             #[allow(dead_code)]
