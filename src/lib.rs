@@ -22,6 +22,7 @@ use std::fs;
 use std::io;
 use std::ops::Range;
 use std::path::PathBuf;
+use std::ptr;
 use std::rc::Rc;
 use std::result;
 
@@ -512,8 +513,25 @@ impl<'a> ParseBuffer<'a> {
             ))
     }
 
-    fn fork(&self) -> ParseBuffer<'a> {
+    /// Creates a new `ParseBuffer` at the same position as `self`.
+    ///
+    /// Changes to `self` will not affect the fork, and vice versa.
+    pub fn fork(&self) -> ParseBuffer<'a> {
         ParseBuffer::new(self.cursor.clone(), Rc::clone(&self.source))
+    }
+
+    /// Commits a forked buffer into `self`, updating `self` to reflect `fork`.
+    ///
+    /// ## Panics
+    /// This function will panic if `fork` wasn't forked from `self` or if
+    /// `self` is further ahead than `fork`.
+    pub fn commit(&self, fork: &Self) {
+        if !ptr::eq(self.cursor.stream, fork.cursor.stream) {
+            panic!("cannot commit ParseBuffer that wasn't forked from this buffer");
+        } else if fork.cursor.offset.get() < self.cursor.offset.get() {
+            panic!("cannot commit original ParseBuffer into fork");
+        }
+        self.cursor.offset.set(fork.cursor.offset.get());
     }
 
     /// Creates an error with the message `Unexpected token` and the given
