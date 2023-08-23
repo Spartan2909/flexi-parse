@@ -581,6 +581,20 @@ impl<'a> ParseBuffer<'a> {
     }
 }
 
+impl fmt::Debug for ParseBuffer<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let tokens: Vec<&Entry> = self.cursor.stream[self.cursor.offset.get()..]
+            .iter()
+            .map(|(_, entry)| entry)
+            .collect();
+        f.debug_struct("ParseBuffer")
+            .field("tokens", &tokens)
+            .field("source", &self.source)
+            .field("error", &self.error)
+            .finish()
+    }
+}
+
 /// Types that can be parsed by looking at a single token.
 ///
 /// This trait is sealed, and cannot be implemented for types outside of this

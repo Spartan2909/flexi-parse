@@ -380,6 +380,8 @@ impl PartialEq for SingleCharPunct {
     }
 }
 
+impl Eq for SingleCharPunct {}
+
 impl<'a> TryFrom<&'a Entry> for &'a SingleCharPunct {
     type Error = ();
 
@@ -392,7 +394,7 @@ impl<'a> TryFrom<&'a Entry> for &'a SingleCharPunct {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Spacing {
     Alone,
     Joint,
@@ -1095,6 +1097,14 @@ impl Token for Space2 {
     }
 }
 
+impl PartialEq for Space2 {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for Space2 {}
+
 #[doc(hidden)]
 #[allow(non_snake_case)]
 pub fn Space2(marker: Marker) -> Space2 {
@@ -1145,6 +1155,14 @@ impl Token for Space4 {
     }
 }
 
+impl PartialEq for Space4 {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for Space4 {}
+
 #[doc(hidden)]
 #[allow(non_snake_case)]
 pub fn Space4(marker: Marker) -> Space4 {
@@ -1183,6 +1201,14 @@ impl Token for Tab {
         "\t".to_string()
     }
 }
+
+impl PartialEq for Tab {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for Tab {}
 
 #[doc(hidden)]
 #[allow(non_snake_case)]
@@ -1223,6 +1249,14 @@ impl Token for NewLine {
     }
 }
 
+impl PartialEq for NewLine {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for NewLine {}
+
 #[doc(hidden)]
 #[allow(non_snake_case)]
 pub fn NewLine(marker: Marker) -> NewLine {
@@ -1261,6 +1295,14 @@ impl Token for CarriageReturn {
         "a carriage return".to_string()
     }
 }
+
+impl PartialEq for CarriageReturn {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for CarriageReturn {}
 
 #[doc(hidden)]
 #[allow(non_snake_case)]
