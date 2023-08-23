@@ -20,7 +20,6 @@ use std::collections::HashSet;
 use std::fmt;
 use std::fs;
 use std::io;
-use std::marker::PhantomData;
 use std::ops::Range;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -186,7 +185,6 @@ impl<F: FnOnce(ParseStream<'_>) -> Result<T>, T> Parser for F {
             stream: tokens.tokens.as_slice(),
             offset: Cell::new(0),
             last: tokens.tokens.len() - 1,
-            _marker: PhantomData,
         };
         self(&ParseBuffer::new(cursor, Rc::clone(&tokens.source)))
     }
@@ -611,11 +609,10 @@ pub type ParseStream<'a> = &'a ParseBuffer<'a>;
 
 #[derive(Debug, Clone)]
 struct Cursor<'a> {
-    original_stream: *const [Entry],
-    stream: *const [(usize, Entry)],
+    original_stream: &'a [Entry],
+    stream: &'a [(usize, Entry)],
     offset: Cell<usize>,
     last: usize,
-    _marker: PhantomData<&'a TokenStream>,
 }
 
 impl<'a> Cursor<'a> {
@@ -628,13 +625,8 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    fn stream(&self) -> &'a [(usize, Entry)] {
-        // SAFETY: `stream` is live for 'a
-        unsafe { &*self.stream }
-    }
-
     fn current(&self) -> &'a (usize, Entry) {
-        &self.stream()[self.offset.get()]
+        &self.stream[self.offset.get()]
     }
 
     pub fn eof(&self) -> bool {
@@ -648,17 +640,12 @@ impl<'a> Cursor<'a> {
     }
 
     fn get_relative(&self, offset: isize) -> Option<&'a (usize, Entry)> {
-        self.stream()
+        self.stream
             .get((self.offset.get() as isize + offset) as usize)
     }
 
-    fn original_stream(&self) -> &'a [Entry] {
-        // SAFETY: `original_stream` is live for 'a
-        unsafe { &*self.original_stream }
-    }
-
     fn get_absolute_range_original(&self, range: Range<usize>) -> Option<&'a [Entry]> {
-        self.original_stream().get(range)
+        self.original_stream.get(range)
     }
 }
 
