@@ -13,41 +13,41 @@ use std::env;
 
 enum Expr {
     Num(f64),
-    Neg(Box<Expr>),
-    Mul(Box<Expr>, Box<Expr>),
-    Div(Box<Expr>, Box<Expr>),
-    Mod(Box<Expr>, Box<Expr>),
-    Add(Box<Expr>, Box<Expr>),
-    Sub(Box<Expr>, Box<Expr>),
+    Neg(Punct!["-"], Box<Expr>),
+    Mul(Box<Expr>, Punct!["*"], Box<Expr>),
+    Div(Box<Expr>, Punct!["/"], Box<Expr>),
+    Mod(Box<Expr>, Punct!["%"], Box<Expr>),
+    Add(Box<Expr>, Punct!["+"], Box<Expr>),
+    Sub(Box<Expr>, Punct!["-"], Box<Expr>),
 }
 
 impl Expr {
     fn eval(&self) -> f64 {
         match self {
             Expr::Num(num) => *num,
-            Expr::Neg(expr) => -expr.eval(),
-            Expr::Mul(left, right) => left.eval() * right.eval(),
-            Expr::Div(left, right) => left.eval() / right.eval(),
-            Expr::Mod(left, right) => left.eval() % right.eval(),
-            Expr::Add(left, right) => left.eval() + right.eval(),
-            Expr::Sub(left, right) => left.eval() - right.eval(),
+            Expr::Neg(_, expr) => -expr.eval(),
+            Expr::Mul(left, _, right) => left.eval() * right.eval(),
+            Expr::Div(left, _, right) => left.eval() / right.eval(),
+            Expr::Mod(left, _, right) => left.eval() % right.eval(),
+            Expr::Add(left, _, right) => left.eval() + right.eval(),
+            Expr::Sub(left, _, right) => left.eval() - right.eval(),
         }
     }
 }
 
 impl Parse for Expr {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        addition(input)
+        term(input)
     }
 }
 
-fn addition(input: ParseStream<'_>) -> Result<Expr> {
+fn term(input: ParseStream<'_>) -> Result<Expr> {
     let mut expr = factor(input)?;
     loop {
-        if input.parse::<Option<Punct!["+"]>>()?.is_some() {
-            expr = Expr::Add(Box::new(expr), Box::new(factor(input)?));
-        } else if input.parse::<Option<Punct!["-"]>>()?.is_some() {
-            expr = Expr::Sub(Box::new(expr), Box::new(factor(input)?));
+        if input.peek(Punct!["+"]) {
+            expr = Expr::Add(Box::new(expr), input.parse()?, Box::new(factor(input)?));
+        } else if input.peek(Punct!["-"]) {
+            expr = Expr::Sub(Box::new(expr), input.parse()?, Box::new(factor(input)?));
         } else {
             break;
         }
@@ -58,12 +58,12 @@ fn addition(input: ParseStream<'_>) -> Result<Expr> {
 fn factor(input: ParseStream<'_>) -> Result<Expr> {
     let mut expr: Expr = unary(input)?;
     loop {
-        if input.parse::<Option<Punct!["*"]>>()?.is_some() {
-            expr = Expr::Mul(Box::new(expr), Box::new(unary(input)?));
-        } else if input.parse::<Option<Punct!["/"]>>()?.is_some() {
-            expr = Expr::Div(Box::new(expr), Box::new(unary(input)?));
-        } else if input.parse::<Option<Punct!["%"]>>()?.is_some() {
-            expr = Expr::Mod(Box::new(expr), Box::new(unary(input)?));
+        if input.peek(Punct!["*"]) {
+            expr = Expr::Mul(Box::new(expr), input.parse()?, Box::new(unary(input)?));
+        } else if input.peek(Punct!["/"]) {
+            expr = Expr::Div(Box::new(expr), input.parse()?, Box::new(unary(input)?));
+        } else if input.peek(Punct!["%"]) {
+            expr = Expr::Mod(Box::new(expr), input.parse()?, Box::new(unary(input)?));
         } else {
             break;
         }
@@ -73,7 +73,7 @@ fn factor(input: ParseStream<'_>) -> Result<Expr> {
 
 fn unary(input: ParseStream<'_>) -> Result<Expr> {
     if input.parse::<Option<Punct!["-"]>>()?.is_some() {
-        Ok(Expr::Neg(Box::new(unary(input)?)))
+        Ok(Expr::Neg(input.parse()?, Box::new(unary(input)?)))
     } else {
         primary(input)
     }
