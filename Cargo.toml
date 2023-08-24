@@ -8,6 +8,7 @@ readme = "README.md"
 documentation = "https://docs.rs/flexi-parse/latest/"
 keywords = ["parsing", "parse"]
 categories = ["parsing"]
+repository = "https://github.com/Spartan2909/flexi-parse"
 
 [dependencies]
 ariadne = { version = "0.3", optional = true }
