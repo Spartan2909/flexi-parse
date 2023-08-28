@@ -10,6 +10,9 @@ delimiters, and more.
 - **Simplicity.** Built-in types for common symbols and helper macros for
 punctuation and keywords mean very little hacking is required to parse complex
 grammars.
+- **Robustness.** Powerful error recovery functionality in both the scanner and
+the parser allows for reporting every syntax error in a file with pinpoint
+accuracy.
 - **Familiarity.** The API is very similar to that of `syn`, making transfer
 from `syn` very simple.
 
@@ -17,9 +20,9 @@ from `syn` very simple.
 
 Examples of this library in use can be found under the `examples` directory.
 [`calc.rs`](examples/calc.rs) is a very simple command line calculator in under
-100 lines of code, and [`lox.rs`](examples/lox.rs) is a parser for the Lox
-language from [Crafting Interpreters](https://craftinginterpreters.com) with
-full error recovery.
+100 lines of code, and [`lox`](examples/lox/main.rs) is an implementation of the
+Lox language from [Crafting Interpreters](https://craftinginterpreters.com) with
+full compile-time error recovery.
 
 ## License
 

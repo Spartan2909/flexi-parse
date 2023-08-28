@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use flexi_parse::group::Braces;
 use flexi_parse::group::Group;
 use flexi_parse::group::Parentheses;
@@ -16,6 +18,24 @@ use flexi_parse::ParseStream;
 use flexi_parse::Parser;
 use flexi_parse::Punct;
 use flexi_parse::Result;
+
+mod interpreter;
+mod resolver;
+
+mod error_codes {
+    pub const INVALID_ASSIGN: u16 = 10;
+    pub const TOO_MANY_ARGS: u16 = 11;
+    pub const TYPE_ERROR: u16 = 12;
+    pub const UNDEFINED_NAME: u16 = 13;
+    pub const INCORRECT_ARITY: u16 = 14;
+    pub const INVALID_INITIALISER: u16 = 15;
+    pub const SHADOW: u16 = 16;
+    pub const RETURN_OUTSIDE_FUNCTION: u16 = 17;
+    pub const THIS_OUTSIDE_CLASS: u16 = 18;
+    pub const CYCLICAL_INHERITANCE: u16 = 19;
+    pub const INHERIT_FROM_VALUE: u16 = 20;
+    pub const INVALID_SUPER: u16 = 21;
+}
 
 mod kw {
     use flexi_parse::keywords_prefixed;
@@ -43,6 +63,38 @@ enum Binary {
     LessEqual(Expr, Punct!["<="], Expr),
 }
 
+impl Binary {
+    fn left(&self) -> &Expr {
+        match self {
+            Binary::Mul(left, _, _)
+            | Binary::Div(left, _, _)
+            | Binary::Add(left, _, _)
+            | Binary::Sub(left, _, _)
+            | Binary::Equal(left, _, _)
+            | Binary::NotEqual(left, _, _)
+            | Binary::Greater(left, _, _)
+            | Binary::GreaterEqual(left, _, _)
+            | Binary::Less(left, _, _)
+            | Binary::LessEqual(left, _, _) => left,
+        }
+    }
+
+    fn right(&self) -> &Expr {
+        match self {
+            Binary::Mul(_, _, right)
+            | Binary::Div(_, _, right)
+            | Binary::Add(_, _, right)
+            | Binary::Sub(_, _, right)
+            | Binary::Equal(_, _, right)
+            | Binary::NotEqual(_, _, right)
+            | Binary::Greater(_, _, right)
+            | Binary::GreaterEqual(_, _, right)
+            | Binary::Less(_, _, right)
+            | Binary::LessEqual(_, _, right) => right,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum Literal {
     False(kw::keyword_false),
@@ -59,18 +111,40 @@ enum Logical {
     Or(Expr, kw::keyword_or, Expr),
 }
 
+impl Logical {
+    fn left(&self) -> &Expr {
+        match self {
+            Logical::And(left, _, _) | Logical::Or(left, _, _) => left,
+        }
+    }
+
+    fn right(&self) -> &Expr {
+        match self {
+            Logical::And(_, _, right) | Logical::Or(_, _, right) => right,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum Unary {
     Neg(Punct!["-"], Expr),
     Not(Punct!["!"], Expr),
 }
 
-#[allow(dead_code)]
+impl Unary {
+    fn right(&self) -> &Expr {
+        match self {
+            Unary::Neg(_, right) | Unary::Not(_, right) => right,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum Expr {
     Assign {
         name: Ident,
         value: Box<Expr>,
+        distance: Cell<Option<usize>>,
     },
     Binary(Box<Binary>),
     Call {
@@ -82,6 +156,7 @@ enum Expr {
         object: Box<Expr>,
         name: Ident,
     },
+    Group(Box<Expr>),
     Literal(Literal),
     Logical(Box<Logical>),
     Set {
@@ -91,11 +166,19 @@ enum Expr {
     },
     Super {
         keyword: kw::keyword_super,
+        distance: Cell<Option<usize>>,
+        dot: Punct!["."],
         method: Ident,
     },
-    This(kw::keyword_this),
+    This {
+        keyword: kw::keyword_this,
+        distance: Cell<Option<usize>>,
+    },
     Unary(Box<Unary>),
-    Variable(Ident),
+    Variable {
+        name: Ident,
+        distance: Cell<Option<usize>>,
+    },
 }
 
 impl Expr {
@@ -110,8 +193,12 @@ impl Expr {
             let equals: Punct!["="] = input.parse()?;
             let value = Box::new(Expr::assignment(input)?);
 
-            if let Expr::Variable(name) = expr {
-                return Ok(Expr::Assign { name, value });
+            if let Expr::Variable { name, .. } = expr {
+                return Ok(Expr::Assign {
+                    name,
+                    value,
+                    distance: Cell::new(None),
+                });
             } else if let Expr::Get { object, name } = expr {
                 return Ok(Expr::Set {
                     object,
@@ -120,7 +207,11 @@ impl Expr {
                 });
             }
 
-            input.add_error(input.new_error("Invalid assignment target".to_string(), &equals, 0))
+            input.add_error(input.new_error(
+                "Invalid assignment target".to_string(),
+                &equals,
+                error_codes::INVALID_ASSIGN,
+            ))
         }
 
         Ok(expr)
@@ -272,7 +363,7 @@ impl Expr {
             input.add_error(input.new_error(
                 "Can't have more than 254 arguments".to_string(),
                 paren.0.clone(),
-                1,
+                error_codes::TOO_MANY_ARGS,
             ));
         }
         Ok(Expr::Call {
@@ -299,15 +390,23 @@ impl Expr {
         } else if input.peek(kw::keyword_super) {
             Ok(Expr::Super {
                 keyword: input.parse()?,
+                distance: Cell::new(None),
+                dot: input.parse()?,
                 method: input.parse()?,
             })
         } else if input.peek(kw::keyword_this) {
-            Ok(Expr::This(input.parse()?))
+            Ok(Expr::This {
+                keyword: input.parse()?,
+                distance: Cell::new(None),
+            })
         } else if lookahead.peek(Ident) {
-            Ok(Expr::Variable(kw::ident(input)?))
+            Ok(Expr::Variable {
+                name: kw::ident(input)?,
+                distance: Cell::new(None),
+            })
         } else if lookahead.peek(Punct!["("]) {
             let group: Group<Parentheses> = input.parse()?;
-            parse(group.into_token_stream())
+            Ok(Expr::Group(Box::new(parse(group.into_token_stream())?)))
         } else {
             Err(lookahead.error())
         }
@@ -320,7 +419,6 @@ impl Parse for Expr {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 struct Function {
     name: Ident,
@@ -334,14 +432,19 @@ impl Parse for Function {
         let mut contents: Group<Parentheses> = input.parse()?;
         contents.remove_whitespace();
         let Parentheses(span) = contents.delimiters();
-        let params: Punctuated<Ident, Punct![","]> =
-            Punctuated::parse_separated.parse(contents.into_token_stream())?;
-        let params: Vec<_> = params.into_iter().collect();
+        let tokens = contents.into_token_stream();
+        let params: Vec<Ident> = if tokens.is_empty() {
+            vec![]
+        } else {
+            let params: Punctuated<Ident, Punct![","]> =
+                Punctuated::parse_separated.parse(tokens)?;
+            params.into_iter().collect()
+        };
         if params.len() >= 255 {
             input.add_error(input.new_error(
                 "Can't have more than 254 parameters".to_string(),
                 span,
-                1,
+                error_codes::TOO_MANY_ARGS,
             ));
         }
         let mut contents: Group<Braces> = input.parse()?;
@@ -351,13 +454,13 @@ impl Parse for Function {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 enum Stmt {
     Block(Vec<Stmt>),
     Class {
         name: Ident,
         superclass: Option<Ident>,
+        superclass_distance: Cell<Option<usize>>,
         methods: Vec<Function>,
     },
     Expr(Expr),
@@ -370,11 +473,11 @@ enum Stmt {
     Print(Expr),
     Return {
         keyword: kw::keyword_return,
-        value: Expr,
+        value: Option<Expr>,
     },
     Variable {
         name: Ident,
-        initialiser: Expr,
+        initialiser: Option<Expr>,
     },
     While {
         condition: Expr,
@@ -424,6 +527,7 @@ impl Stmt {
         Ok(Stmt::Class {
             name,
             superclass,
+            superclass_distance: Cell::new(None),
             methods,
         })
     }
@@ -435,9 +539,9 @@ impl Stmt {
 
         let initialiser = if input.peek(Punct!["="]) {
             let _: Punct!["="] = input.parse()?;
-            input.parse()?
+            Some(input.parse()?)
         } else {
-            Expr::Literal(Literal::Nil(kw::keyword_nil::new(input)))
+            None
         };
 
         let _: Punct![";"] = input.parse()?;
@@ -548,9 +652,9 @@ impl Stmt {
     fn return_statement(input: ParseStream<'_>) -> Result<Self> {
         let keyword: kw::keyword_return = input.parse()?;
         let value = if input.peek(Punct![";"]) {
-            Expr::Literal(Literal::Nil(kw::keyword_nil::new(input)))
+            None
         } else {
-            input.parse()?
+            Some(input.parse()?)
         };
         let _: Punct![";"] = input.parse()?;
         Ok(Stmt::Return { keyword, value })
@@ -603,19 +707,18 @@ impl Ast {
 impl Parse for Ast {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let mut stmts = vec![];
-        let mut errors = vec![];
 
         while !input.is_empty() {
             match input.parse() {
                 Ok(stmt) => stmts.push(stmt),
                 Err(err) => {
                     Ast::synchronise(input);
-                    errors.push(err);
+                    input.add_error(err);
                 }
             }
         }
 
-        if let Some(error) = errors.into_iter().reduce(|acc, err| acc.with(err)) {
+        if let Some(error) = input.get_error() {
             Err(error)
         } else {
             Ok(Ast(stmts))
@@ -624,17 +727,46 @@ impl Parse for Ast {
 }
 
 fn main() {
-    let _ast: Ast = pretty_unwrap(parse_string(
-        "
+    let ast: Ast = pretty_unwrap(parse_string(
+        r#"
         var x = 5;
-        var y = \"hello\";
+        var y = "hello";
         x = 6;
         y = 4.0;
 
         fun add(x, y) {
             return x + y;
         }
-    "
+
+        print(add(x, y));
+
+        class Cake {
+            init(flavour) {
+                this.flavour = flavour;
+            }
+
+            taste() {
+                var adjective = "delicious";
+                print "The " + this.flavour + " cake is " + adjective + "!";
+            }
+        }
+
+        class ChocolateCake < Cake {
+            init() {
+                this.flavour = "Chocolate";
+            }
+
+            taste() {
+                super.taste();
+                print "Mmm, chocolatey!";
+            }
+        }
+
+        var cake = ChocolateCake();
+        cake.taste();
+    "#
         .to_string(),
     ));
+    pretty_unwrap(resolver::resolve(&ast));
+    pretty_unwrap(interpreter::interpret(ast));
 }
