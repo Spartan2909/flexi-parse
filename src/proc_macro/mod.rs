@@ -76,11 +76,11 @@ fn tree_to_trees(token: TokenTree2) -> Vec<Entry> {
                     name: String::new(),
                     path: None,
                     contents: literal.to_string(),
-                }))
+                }), 0, None)
                 .0
                 .tokens
                 .into_iter()
-                .map(|(_, mut token)| {
+                .map(|mut token| {
                     token.set_span(span.clone());
                     token
                 }),
