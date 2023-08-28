@@ -1355,7 +1355,7 @@ macro_rules! keywords {
                 #[allow(dead_code)]
                 pub fn new(input: $crate::ParseStream<'_>) -> Self {
                     Self {
-                        ident: $crate::token::Ident::new(stringify!($kw).to_string(), input),
+                        ident: $crate::token::Ident::new(stringify!($kw).to_string(), input.empty_span()),
                     }
                 }
 
