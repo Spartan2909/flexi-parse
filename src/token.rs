@@ -10,7 +10,6 @@ use crate::error::Error;
 use crate::error::ErrorKind;
 use crate::group::delimited_string;
 use crate::group::DoubleQuotes;
-use crate::group::Group;
 use crate::group::SingleQuotes;
 use crate::private::Sealed;
 use crate::Entry;
@@ -106,7 +105,10 @@ impl Ord for LitStrDoubleQuote {
 
 impl Parse for LitStrDoubleQuote {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let (start, end) = delimited_string::<DoubleQuotes>(input)?;
+        let (start, end) = delimited_string::<DoubleQuotes>(input).map_err(|mut err| {
+            err.group_to_string();
+            err
+        })?;
         let (start, end) = (start.span(), end.span());
         let string = input.source.contents[start.end..end.start].to_owned();
         let span = Span::across(start, end);
@@ -174,7 +176,10 @@ impl Ord for LitStrSingleQuote {
 
 impl Parse for LitStrSingleQuote {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let (start, end) = delimited_string::<SingleQuotes>(input)?;
+        let (start, end) = delimited_string::<SingleQuotes>(input).map_err(|mut err| {
+            err.group_to_string();
+            err
+        })?;
         let (start, end) = (start.span(), end.span());
         let string = input.source.contents[start.end..end.start].to_owned();
         let span = Span::across(start, end);
@@ -242,12 +247,13 @@ impl Ord for LitChar {
 
 impl Parse for LitChar {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let group: Group<SingleQuotes> = input.parse().map_err(|mut err| {
+        let (start, end) = delimited_string::<SingleQuotes>(input).map_err(|mut err| {
             err.group_to_char();
             err
         })?;
-        let span = group.span;
-        let string = group.token_stream.to_string();
+        let (start, end) = (start.span(), end.span());
+        let string = input.source.contents[start.end..end.start].to_owned();
+        let span = Span::across(start, end);
         if string.len() != 1 {
             return Err(Error::new(
                 Rc::clone(&input.source),

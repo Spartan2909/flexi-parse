@@ -282,7 +282,10 @@ pub(crate) fn delimited_string<D: Delimiters>(
             input.next()?;
         }
     }
-    let end: D::End = input.parse()?;
+    let end: D::End = input.parse().map_err(|mut err| {
+        err.eof_to_group(start.span().clone(), D::Start::display());
+        err
+    })?;
     Ok((start, end))
 }
 
