@@ -47,6 +47,10 @@
 //!     type Start = Punct!["@"];
 //!     type End = Punct!["@"];
 //!     const CAN_NEST: bool = false;
+//!
+//!     fn span(&self) -> &Span {
+//!         &self.0
+//!     }
 //! }
 //!
 //! # fn main () {
@@ -56,6 +60,7 @@
 //! # }
 //! ```
 
+use crate::scanner;
 use crate::token::DoubleQuote;
 use crate::token::LAngle;
 use crate::token::LeftBrace;
@@ -68,7 +73,6 @@ use crate::token::RightBracket;
 use crate::token::RightParen;
 use crate::token::SingleQuote;
 use crate::token::Token;
-use crate::Entry;
 use crate::Parse;
 use crate::ParseStream;
 use crate::Result;
@@ -92,6 +96,9 @@ pub trait Delimiters: From<Span> {
     /// false if the opening and closing delimiters are the same, and true
     /// otherwise.
     const CAN_NEST: bool;
+
+    /// The span covered by these delimiters.
+    fn span(&self) -> &Span;
 }
 
 /// The delimiters `(` `)`.
@@ -114,6 +121,10 @@ impl Delimiters for Parentheses {
     type Start = LeftParen;
     type End = RightParen;
     const CAN_NEST: bool = true;
+
+    fn span(&self) -> &Span {
+        &self.0
+    }
 }
 
 /// The delimiters `[` `]`.
@@ -136,6 +147,10 @@ impl Delimiters for Brackets {
     type Start = LeftBracket;
     type End = RightBracket;
     const CAN_NEST: bool = true;
+
+    fn span(&self) -> &Span {
+        &self.0
+    }
 }
 
 /// The delimiters `{` `}`.
@@ -158,6 +173,10 @@ impl Delimiters for Braces {
     type Start = LeftBrace;
     type End = RightBrace;
     const CAN_NEST: bool = true;
+
+    fn span(&self) -> &Span {
+        &self.0
+    }
 }
 
 /// The delimiters `<` `>`.
@@ -174,6 +193,10 @@ impl Delimiters for AngleBrackets {
     type Start = LAngle;
     type End = RAngle;
     const CAN_NEST: bool = true;
+
+    fn span(&self) -> &Span {
+        &self.0
+    }
 }
 
 /// The delimiters `'` `'`.
@@ -201,6 +224,10 @@ impl Delimiters for SingleQuotes {
     type Start = SingleQuote;
     type End = SingleQuote;
     const CAN_NEST: bool = false;
+
+    fn span(&self) -> &Span {
+        &self.0
+    }
 }
 
 /// The delimiters `"` `"`.
@@ -223,6 +250,40 @@ impl Delimiters for DoubleQuotes {
     type Start = DoubleQuote;
     type End = DoubleQuote;
     const CAN_NEST: bool = false;
+
+    fn span(&self) -> &Span {
+        &self.0
+    }
+}
+
+pub(crate) fn delimited_string<D: Delimiters>(
+    input: ParseStream<'_>,
+) -> Result<(D::Start, D::End)> {
+    let start: D::Start = input.parse()?;
+    if D::CAN_NEST {
+        let mut open = 1;
+        loop {
+            if D::End::peek(input) {
+                open -= 1;
+                if open == 0 {
+                    break;
+                } else {
+                    input.next()?;
+                }
+            } else if D::Start::peek(input) {
+                open += 1;
+                input.next()?;
+            } else {
+                input.next()?;
+            }
+        }
+    } else {
+        while !D::End::peek(input) {
+            input.next()?;
+        }
+    }
+    let end: D::End = input.parse()?;
+    Ok((start, end))
 }
 
 /// A delimited group.
@@ -256,49 +317,10 @@ impl<D: Delimiters> Group<D> {
 
 impl<D: Delimiters> Parse for Group<D> {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let group_start = input.parse::<D::Start>()?.span().start;
-        let start = input.current()?.0;
-
-        if D::CAN_NEST {
-            let mut open = 1;
-            loop {
-                if D::End::peek(input) {
-                    open -= 1;
-                    if open == 0 {
-                        break;
-                    } else {
-                        input.next()?;
-                    }
-                } else if D::Start::peek(input) {
-                    open += 1;
-                    input.next()?;
-                } else {
-                    input.next()?;
-                }
-            }
-        } else {
-            while !D::End::peek(input) {
-                input.next()?;
-            }
-        }
-
-        let end_of_last_token = input.get_relative(-1)?.1.span().end;
-        let end = input
-            .current()
-            .map_err(|mut err| {
-                err.eof_to_group(
-                    Span::new(group_start, end_of_last_token, Rc::clone(&input.source)),
-                    D::Start::display(),
-                );
-                err
-            })?
-            .0;
-        let end_token: D::End = input.parse()?;
-        let group_end = end_token.span().end;
-        let mut tokens = input.get_absolute_range_original(start..end)?.to_vec();
-        tokens.push(Entry::End);
-        let token_stream = TokenStream::new(tokens, Rc::clone(&input.source));
-        let span = Span::new(group_start, group_end, Rc::clone(&input.source));
+        let (start, end) = delimited_string::<D>(input)?;
+        let (start, end) = (start.span(), end.span());
+        let (token_stream, _) = scanner::scan(Rc::clone(&input.source), start.end, Some(end.start));
+        let span = Span::new(start.start, end.end, Rc::clone(&input.source));
         Ok(Group {
             token_stream,
             span,

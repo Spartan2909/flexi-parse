@@ -10,10 +10,11 @@ mod simple;
 mod whitespace;
 
 fn scan(source: &str) -> TokenStream {
-    let (tokens, error) = scanner::scan(Rc::new(SourceFile::new(
-        "test data".to_string(),
-        source.to_string(),
-    )));
+    let (tokens, error) = scanner::scan(
+        Rc::new(SourceFile::new("test data".to_string(), source.to_string())),
+        0,
+        None,
+    );
     if let Some(error) = error {
         panic!("{:?}", error);
     }

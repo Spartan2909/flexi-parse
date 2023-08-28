@@ -39,7 +39,8 @@ impl Scanner {
 
         while !self.is_at_end() {
             match self.scan_token() {
-                Ok(token) => tokens.push(token),
+                Ok(Some(token)) => tokens.push(token),
+                Ok(None) => {}
                 Err(err) => {
                     self.errors.add(err);
                     tokens.push(Entry::Error(Span::new(0, 0, Rc::clone(&self.source))));
@@ -59,7 +60,7 @@ impl Scanner {
         (TokenStream::new(tokens, self.source), errors)
     }
 
-    fn scan_token(&mut self) -> Result<Entry> {
+    fn scan_token(&mut self) -> Result<Option<Entry>> {
         let token = match self.peek(0)? {
             c if PunctKind::try_from(c).is_ok() => {
                 let kind = c.try_into().unwrap();
@@ -95,7 +96,7 @@ impl Scanner {
             }
             ' ' => {
                 self.current += 1;
-                self.scan_token()?
+                return Ok(None);
             }
             '\t' => {
                 let span = Span::new(self.current, self.current + 1, Rc::clone(&self.source));
@@ -125,7 +126,7 @@ impl Scanner {
             }
         };
 
-        Ok(token)
+        Ok(Some(token))
     }
 
     fn peek(&mut self, offset: usize) -> Result<char> {
@@ -149,10 +150,14 @@ impl Scanner {
     }
 }
 
-pub(crate) fn scan(source: Rc<SourceFile>) -> (TokenStream, Option<Error>) {
+pub(crate) fn scan(
+    source: Rc<SourceFile>,
+    start: usize,
+    end: Option<usize>,
+) -> (TokenStream, Option<Error>) {
     let (tokens, errors) = Scanner {
-        current: 0,
-        end: source.contents.len(),
+        current: start,
+        end: end.unwrap_or(source.contents.len()),
         errors: Error::empty(),
         source,
     }

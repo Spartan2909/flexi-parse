@@ -7,7 +7,7 @@ impl fmt::Display for TokenStream {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut last_token_end = usize::MAX;
         let mut this_token_span;
-        for (_, token) in &self.tokens {
+        for token in &self.tokens {
             let string = match token {
                 Entry::Error(_) => return Err(fmt::Error),
                 Entry::Ident(ident) => {

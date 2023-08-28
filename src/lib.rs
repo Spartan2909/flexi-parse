@@ -20,7 +20,6 @@ use std::collections::HashSet;
 use std::fmt;
 use std::fs;
 use std::io;
-use std::ops::Range;
 use std::path::PathBuf;
 use std::ptr;
 use std::rc::Rc;
@@ -156,12 +155,6 @@ impl Span {
     }
 }
 
-impl<T: Token> From<&T> for Span {
-    fn from(value: &T) -> Self {
-        value.span().clone()
-    }
-}
-
 /// Parsing interface for types with a default parsing method.
 pub trait Parse: Sized {
     /// Parses the input into this type.
@@ -182,7 +175,6 @@ impl<F: FnOnce(ParseStream<'_>) -> Result<T>, T> Parser for F {
 
     fn parse(self, tokens: TokenStream) -> Result<Self::Output> {
         let cursor = Cursor {
-            original_stream: tokens.original_tokens.as_slice(),
             stream: tokens.tokens.as_slice(),
             offset: Cell::new(0),
             last: tokens.tokens.len() - 1,
@@ -203,7 +195,7 @@ pub fn parse<T: Parse>(mut tokens: TokenStream) -> Result<T> {
 ///
 /// This function ignores all whitespace.
 pub fn parse_source<T: Parse>(source: Rc<SourceFile>) -> Result<T> {
-    let (tokens, error) = scanner::scan(source);
+    let (tokens, error) = scanner::scan(source, 0, None);
     parse(tokens).map_err(|mut err| {
         if let Some(error) = error {
             err.add(error);
@@ -245,7 +237,7 @@ pub fn parse_repeated<T: Parse>(input: ParseStream<'_>) -> Result<Vec<T>> {
 pub fn pretty_unwrap<T>(result: Result<T>) -> T {
     result.unwrap_or_else(|err| {
         err.eprint().unwrap();
-        panic!("failed to parse due to above errors");
+        panic!("failed due to above errors");
     })
 }
 
@@ -260,18 +252,13 @@ pub fn pretty_unwrap<T>(result: Result<T>) -> T {
 /// [proc-macro2]: https://docs.rs/proc-macro2/latest/proc_macro2/struct.TokenStream.html
 #[derive(Debug, Clone, PartialEq)]
 pub struct TokenStream {
-    original_tokens: Vec<Entry>,
-    tokens: Vec<(usize, Entry)>,
+    tokens: Vec<Entry>,
     source: Rc<SourceFile>,
 }
 
 impl TokenStream {
     fn new(tokens: Vec<Entry>, source: Rc<SourceFile>) -> TokenStream {
-        TokenStream {
-            original_tokens: tokens.clone(),
-            tokens: tokens.into_iter().enumerate().collect(),
-            source,
-        }
+        TokenStream { tokens, source }
     }
 
     fn filter<F: FnMut(&TokenStream) -> Vec<usize>>(&mut self, mut function: F) {
@@ -290,8 +277,8 @@ impl TokenStream {
         self.filter(|tokens| {
             let mut indices = vec![];
             let mut post_newline = true;
-            for (index, (_, token)) in tokens.tokens.iter().enumerate() {
-                if let Entry::WhiteSpace(whitespace) = token {
+            for (index, entry) in tokens.tokens.iter().enumerate() {
+                if let Entry::WhiteSpace(whitespace) = entry {
                     if matches!(whitespace, WhiteSpace::NewLine(_)) {
                         post_newline = true;
                     } else if !post_newline {
@@ -311,8 +298,8 @@ impl TokenStream {
     pub fn remove_blank_space(&mut self) {
         self.filter(|tokens| {
             let mut indices = vec![];
-            for (index, (_, token)) in tokens.tokens.iter().enumerate() {
-                if let Entry::WhiteSpace(whitespace) = token {
+            for (index, entry) in tokens.tokens.iter().enumerate() {
+                if let Entry::WhiteSpace(whitespace) = entry {
                     if !matches!(whitespace, WhiteSpace::NewLine(_)) {
                         indices.push(index);
                     }
@@ -328,13 +315,18 @@ impl TokenStream {
     pub fn remove_whitespace(&mut self) {
         self.filter(|tokens| {
             let mut indices = vec![];
-            for (index, (_, token)) in tokens.tokens.iter().enumerate() {
-                if let Entry::WhiteSpace(_) = token {
+            for (index, entry) in tokens.tokens.iter().enumerate() {
+                if let Entry::WhiteSpace(_) = entry {
                     indices.push(index);
                 }
             }
             indices
         });
+    }
+
+    /// Returns true if there are no tokens in `self`.
+    pub fn is_empty(&self) -> bool {
+        self.tokens.len() == 1
     }
 }
 
@@ -342,13 +334,29 @@ impl TryFrom<Rc<SourceFile>> for TokenStream {
     type Error = Error;
 
     fn try_from(value: Rc<SourceFile>) -> Result<Self> {
-        let (tokens, error) = scanner::scan(value);
+        let (tokens, error) = scanner::scan(value, 0, None);
         if let Some(error) = error {
             Err(error)
         } else {
             Ok(tokens)
         }
     }
+}
+
+/// Creates a new error in the given source file, at the given location, and
+/// with the given message and code.
+///
+/// `location` will accept any type that is `Token`, `Delimiter`, or a `Span`.
+pub fn new_error<L: Into<Span>>(message: String, location: L, code: u16) -> Error {
+    let span = location.into();
+    Error::new(
+        Rc::clone(&span.source),
+        ErrorKind::Custom {
+            message,
+            span,
+            code,
+        },
+    )
 }
 
 /// A cursor position within a token stream.
@@ -480,7 +488,7 @@ impl<'a> ParseBuffer<'a> {
         }
     }
 
-    fn current(&self) -> Result<&'a (usize, Entry)> {
+    fn current(&self) -> Result<&'a Entry> {
         self.report_error_tokens()?;
         if self.cursor.eof() {
             Err(Error::new(
@@ -494,23 +502,14 @@ impl<'a> ParseBuffer<'a> {
 
     /// Gets the span of the current token, unless `self` is empty.
     pub fn current_span(&self) -> Result<Span> {
-        Ok(self.current()?.1.span().to_owned())
+        Ok(self.current()?.span().to_owned())
     }
 
-    fn get_relative(&self, offset: isize) -> Result<&'a (usize, Entry)> {
+    fn get_relative(&self, offset: isize) -> Result<&'a Entry> {
         self.cursor.get_relative(offset).ok_or(Error::new(
             Rc::clone(&self.source),
             ErrorKind::EndOfFile(self.source.contents.len()),
         ))
-    }
-
-    fn get_absolute_range_original(&self, range: Range<usize>) -> Result<&'a [Entry]> {
-        self.cursor
-            .get_absolute_range_original(range)
-            .ok_or(Error::new(
-                Rc::clone(&self.source),
-                ErrorKind::EndOfFile(self.source.contents.len()),
-            ))
     }
 
     /// Creates a new `ParseBuffer` at the same position as `self`.
@@ -548,7 +547,7 @@ impl<'a> ParseBuffer<'a> {
             Rc::clone(&self.source),
             ErrorKind::UnexpectedToken {
                 expected,
-                span: current.1.span().clone(),
+                span: current.span().clone(),
             },
         )
     }
@@ -583,12 +582,8 @@ impl<'a> ParseBuffer<'a> {
 
 impl fmt::Debug for ParseBuffer<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let tokens: Vec<&Entry> = self.cursor.stream[self.cursor.offset.get()..]
-            .iter()
-            .map(|(_, entry)| entry)
-            .collect();
         f.debug_struct("ParseBuffer")
-            .field("tokens", &tokens)
+            .field("tokens", &self.cursor.stream)
             .field("source", &self.source)
             .field("error", &self.error)
             .finish()
@@ -641,8 +636,7 @@ pub type ParseStream<'a> = &'a ParseBuffer<'a>;
 
 #[derive(Debug, Clone)]
 struct Cursor<'a> {
-    original_stream: &'a [Entry],
-    stream: &'a [(usize, Entry)],
+    stream: &'a [Entry],
     offset: Cell<usize>,
     last: usize,
 }
@@ -657,7 +651,7 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    fn current(&self) -> &'a (usize, Entry) {
+    fn current(&self) -> &'a Entry {
         &self.stream[self.offset.get()]
     }
 
@@ -666,18 +660,14 @@ impl<'a> Cursor<'a> {
     }
 
     fn next(&self) -> (&'a Entry, usize) {
-        let (_, token_tree) = self.current();
+        let token_tree = self.current();
         let offset = self.bump();
         (token_tree, offset)
     }
 
-    fn get_relative(&self, offset: isize) -> Option<&'a (usize, Entry)> {
+    fn get_relative(&self, offset: isize) -> Option<&'a Entry> {
         self.stream
             .get((self.offset.get() as isize + offset) as usize)
-    }
-
-    fn get_absolute_range_original(&self, range: Range<usize>) -> Option<&'a [Entry]> {
-        self.original_stream.get(range)
     }
 }
 

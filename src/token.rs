@@ -8,6 +8,7 @@
 
 use crate::error::Error;
 use crate::error::ErrorKind;
+use crate::group::delimited_string;
 use crate::group::DoubleQuotes;
 use crate::group::Group;
 use crate::group::SingleQuotes;
@@ -49,6 +50,12 @@ impl<T: Token> Parse for Option<T> {
             Ok(value) => Ok(Some(value)),
             Err(_) => Ok(None),
         }
+    }
+}
+
+impl<T: Token> From<&T> for Span {
+    fn from(value: &T) -> Self {
+        value.span().to_owned()
     }
 }
 
@@ -99,12 +106,10 @@ impl Ord for LitStrDoubleQuote {
 
 impl Parse for LitStrDoubleQuote {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let group: Group<DoubleQuotes> = input.parse().map_err(|mut err| {
-            err.group_to_string();
-            err
-        })?;
-        let string = group.token_stream.to_string();
-        let span = group.span;
+        let (start, end) = delimited_string::<DoubleQuotes>(input)?;
+        let (start, end) = (start.span(), end.span());
+        let string = input.source.contents[start.end..end.start].to_owned();
+        let span = Span::across(start, end);
         Ok(LitStrDoubleQuote { string, span })
     }
 }
@@ -169,12 +174,10 @@ impl Ord for LitStrSingleQuote {
 
 impl Parse for LitStrSingleQuote {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let group: Group<SingleQuotes> = input.parse().map_err(|mut err| {
-            err.group_to_string();
-            err
-        })?;
-        let string = group.token_stream.to_string();
-        let span = group.span;
+        let (start, end) = delimited_string::<SingleQuotes>(input)?;
+        let (start, end) = (start.span(), end.span());
+        let string = input.source.contents[start.end..end.start].to_owned();
+        let span = Span::across(start, end);
         Ok(LitStrSingleQuote { string, span })
     }
 }
@@ -290,6 +293,12 @@ impl Ident {
     /// Returns the text that makes up the identifier.
     pub fn string(&self) -> &String {
         &self.string
+    }
+
+    /// Creates a new identifier in the given [`ParseStream`] with the given
+    /// string.
+    pub fn new(string: String, span: Span) -> Ident {
+        Ident { string, span }
     }
 
     fn parse_simple(input: ParseStream<'_>) -> Result<Self> {
@@ -715,7 +724,7 @@ macro_rules! tokens {
 
             impl $t2 {
                 fn from_tokens_impl(input: ParseStream<'_>) -> Result<Self> {
-                    if let Entry::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()?.1 {
+                    if let Entry::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()? {
 
                     } else {
                         return Err(Error::empty());
@@ -731,7 +740,7 @@ macro_rules! tokens {
 
             impl Parse for $t2 {
                 fn parse(input: ParseStream<'_>) -> Result<Self> {
-                    let span = input.current()?.1.span();
+                    let span = input.current()?.span();
                     Self::from_tokens_impl(input).map_err(|_| {
                         Error::new(Rc::clone(&input.source), ErrorKind::UnexpectedToken {
                             expected: HashSet::from_iter(vec![format!("'{}'", $name2)]),
@@ -792,12 +801,12 @@ macro_rules! tokens {
 
             impl $t3 {
                 fn from_tokens_impl(input: ParseStream<'_>) -> Result<Self> {
-                    if let Entry::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()?.1 {
+                    if let Entry::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()? {
 
                     } else {
                         return Err(Error::empty());
                     }
-                    if let Entry::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()?.1 {
+                    if let Entry::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()? {
 
                     } else {
                         return Err(Error::empty());
@@ -813,7 +822,7 @@ macro_rules! tokens {
 
             impl Parse for $t3 {
                 fn parse(input: ParseStream<'_>) -> Result<Self> {
-                    let span = input.current()?.1.span();
+                    let span = input.current()?.span();
                     Self::from_tokens_impl(input).map_err(|_| {
                         Error::new(Rc::clone(&input.source), ErrorKind::UnexpectedToken {
                             expected: HashSet::from_iter(vec![format!("'{}'", $name3)]),
@@ -963,7 +972,7 @@ impl<T: Punct> JoinedPunct for (T,) {
 
 impl<T: JoinedPunct> Parse for (T, Span) {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let span = input.current()?.1.span();
+        let span = input.current()?.span();
         let value = T::parse(input).map_err(|_| {
             Error::new(
                 Rc::clone(&input.source),
@@ -975,7 +984,7 @@ impl<T: JoinedPunct> Parse for (T, Span) {
         })?;
         let span = Span::new(
             span.start,
-            input.get_relative(-1)?.1.span().end,
+            input.get_relative(-1)?.span().end,
             Rc::clone(&input.source),
         );
         Ok((value, span))
@@ -1333,15 +1342,20 @@ macro_rules! keywords {
             #[derive(Debug, Clone)]
             #[allow(non_camel_case_types)]
             pub struct $kw {
-                span: $crate::Span
+                ident: $crate::token::Ident
             }
 
             impl $kw {
                 #[allow(dead_code)]
                 pub fn new(input: $crate::ParseStream<'_>) -> Self {
                     Self {
-                        span: input.empty_span()
+                        ident: $crate::token::Ident::new(stringify!($kw).to_string(), input),
                     }
+                }
+
+                #[allow(dead_code)]
+                pub fn ident(&self) -> &$crate::token::Ident {
+                    &self.ident
                 }
             }
 
@@ -1350,7 +1364,7 @@ macro_rules! keywords {
                     let ident: $crate::token::Ident = input.parse()?;
                     if ident.string() == stringify!($kw) {
                         $crate::Result::Ok(Self {
-                            span: ident.span().to_owned()
+                            ident: ident
                         })
                     } else {
                         $crate::Result::Err(input.unexpected_token(
@@ -1364,11 +1378,11 @@ macro_rules! keywords {
 
             impl $crate::token::Token for $kw {
                 fn span(&self) -> &$crate::Span {
-                    &self.span
+                    self.ident.span()
                 }
 
                 fn set_span(&mut self, span: $crate::Span) {
-                    self.span = span;
+                    self.ident.set_span(span);
                 }
 
                 fn display() -> String {
@@ -1426,21 +1440,25 @@ pub use keywords;
 #[macro_export]
 macro_rules! keywords_prefixed {
     [ $( $kw:tt ),+ $(,)? ] => {
-        use $crate::token::Token as _;
         $(
             $crate::token::concat_idents!(struct_name = keyword_, $kw {
                 #[derive(Debug, Clone)]
                 #[allow(non_camel_case_types)]
                 pub struct struct_name {
-                    span: $crate::Span
+                    ident: $crate::token::Ident
                 }
 
                 impl struct_name {
                     #[allow(dead_code)]
                     pub fn new(input: $crate::ParseStream<'_>) -> Self {
                         Self {
-                            span: input.empty_span()
+                            ident: $crate::token::Ident::new($kw.to_string(), input.empty_span()),
                         }
+                    }
+
+                    #[allow(dead_code)]
+                    pub fn ident(&self) -> &$crate::token::Ident {
+                        &self.ident
                     }
                 }
 
@@ -1449,7 +1467,7 @@ macro_rules! keywords_prefixed {
                         let ident: $crate::token::Ident = input.parse()?;
                         if ident.string() == $kw {
                             $crate::Result::Ok(Self {
-                                span: ident.span().to_owned()
+                                ident,
                             })
                         } else {
                             $crate::Result::Err(input.unexpected_token(
@@ -1463,11 +1481,11 @@ macro_rules! keywords_prefixed {
 
                 impl $crate::token::Token for struct_name {
                     fn span(&self) -> &$crate::Span {
-                        &self.span
+                        self.ident.span()
                     }
 
                     fn set_span(&mut self, span: $crate::Span) {
-                        self.span = span;
+                        self.ident.set_span(span);
                     }
 
                     fn display() -> String {
