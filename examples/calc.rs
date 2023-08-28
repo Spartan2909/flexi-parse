@@ -72,7 +72,7 @@ fn factor(input: ParseStream<'_>) -> Result<Expr> {
 }
 
 fn unary(input: ParseStream<'_>) -> Result<Expr> {
-    if input.parse::<Option<Punct!["-"]>>()?.is_some() {
+    if input.peek(Punct!["-"]) {
         Ok(Expr::Neg(input.parse()?, Box::new(unary(input)?)))
     } else {
         primary(input)
