@@ -26,15 +26,21 @@ use std::rc::Rc;
 use std::result;
 
 pub mod error;
-pub mod group;
-pub mod lookahead;
-pub mod punctuated;
-mod scanner;
-mod to_string;
-pub mod token;
 use error::Error;
 use error::ErrorKind;
+
+pub mod group;
+
+pub mod lookahead;
 use lookahead::Lookahead;
+
+pub mod punctuated;
+
+mod scanner;
+
+mod to_string;
+
+pub mod token;
 use token::Ident;
 use token::SingleCharPunct;
 use token::Token;

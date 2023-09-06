@@ -72,11 +72,15 @@ fn tree_to_trees(token: TokenTree2) -> Vec<Entry> {
         }
         TokenTree2::Literal(literal) => {
             tokens.extend(
-                scanner::scan(Rc::new(SourceFile {
-                    name: String::new(),
-                    path: None,
-                    contents: literal.to_string(),
-                }), 0, None)
+                scanner::scan(
+                    Rc::new(SourceFile {
+                        name: String::new(),
+                        path: None,
+                        contents: literal.to_string(),
+                    }),
+                    0,
+                    None,
+                )
                 .0
                 .tokens
                 .into_iter()
