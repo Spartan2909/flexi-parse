@@ -203,8 +203,8 @@ impl Delimiters for AngleBrackets {
 ///
 /// See also [`LitStrSingleQuote`] and [`LitChar`].
 ///
-/// [`LitStrSingleQuote`]: crate::token::LitStrSingleQuote
-/// [`LitChar`]: crate::token::LitChar
+/// [`LitStrSingleQuote`]: struct@crate::token::LitStrSingleQuote
+/// [`LitChar`]: struct@crate::token::LitChar
 #[derive(Debug, Clone)]
 pub struct SingleQuotes(pub Span);
 

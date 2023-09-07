@@ -3,8 +3,7 @@
 //! This module is built around the [`Error`] type, which is returned when any
 //! parsing function encounters an error. Typically, these will not be created
 //! directly, but instead propagated up from the built-in parsing functions.
-//! The exceptions to this are [`Lookahead::error`][lookahead-error] and the
-//! discouraged [`ParseBuffer::error`][parsebuffer-error].
+//! The exception to this is [`Lookahead::error`][lookahead-error].
 //!
 //! [lookahead-error]: crate::lookahead::Lookahead::error
 //! [parsebuffer-error]: crate::ParseBuffer::error
