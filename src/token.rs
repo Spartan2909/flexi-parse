@@ -11,9 +11,9 @@ use crate::error::ErrorKind;
 use crate::group::delimited_string;
 use crate::group::DoubleQuotes;
 use crate::group::SingleQuotes;
+use crate::private::Marker;
 use crate::private::Sealed;
 use crate::Entry;
-use crate::Marker;
 use crate::Parse;
 use crate::ParseStream;
 use crate::Result;
@@ -1406,7 +1406,7 @@ macro_rules! keywords {
 
             #[doc(hidden)]
             #[allow(dead_code)]
-            pub fn $kw(marker: $crate::Marker) -> $kw {
+            pub fn $kw(marker: $crate::private::Marker) -> $kw {
                 match marker {}
             }
         )+
@@ -1507,7 +1507,7 @@ macro_rules! keywords_prefixed {
 
                 #[doc(hidden)]
                 #[allow(dead_code)]
-                pub fn struct_name(marker: $crate::Marker) -> struct_name {
+                pub fn struct_name(marker: $crate::private::Marker) -> struct_name {
                     match marker {}
                 }
             });

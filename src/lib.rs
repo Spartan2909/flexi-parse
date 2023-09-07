@@ -31,8 +31,10 @@ use error::ErrorKind;
 
 pub mod group;
 
-pub mod lookahead;
-use lookahead::Lookahead;
+mod lookahead;
+pub use lookahead::Lookahead;
+pub use lookahead::Peek;
+pub use lookahead::TokenLike;
 
 pub mod punctuated;
 
@@ -449,6 +451,10 @@ impl<'a> ParseBuffer<'a> {
         self.parse_undo::<T::Token>().is_ok()
     }
 
+    fn peek_turbofish<T: Token>(&self) -> bool {
+        self.parse_undo::<T>().is_ok()
+    }
+
     /// Returns true if the next token is an instance of `T`.
     ///
     /// Note that for the purposes of this function, multi-character punctuation
@@ -594,24 +600,6 @@ impl fmt::Debug for ParseBuffer<'_> {
             .field("error", &self.error)
             .finish()
     }
-}
-
-/// Types that can be parsed by looking at a single token.
-///
-/// This trait is sealed, and cannot be implemented for types outside of this
-/// crate.
-pub trait Peek: Sealed {
-    #[doc(hidden)]
-    type Token: Token;
-}
-
-#[doc(hidden)]
-pub enum Marker {}
-
-impl<F: FnOnce(Marker) -> T, T: Token> Sealed for F {}
-
-impl<F: FnOnce(Marker) -> T, T: Token> Peek for F {
-    type Token = T;
 }
 
 /// Returns true if [`ParseBuffer::peek`] would return true for any types
@@ -816,8 +804,8 @@ macro_rules! Punct {
 #[doc(hidden)]
 pub mod private {
     pub trait Sealed {}
+    pub enum Marker {}
 }
-use private::Sealed;
 
 #[cfg(test)]
 mod tests;
