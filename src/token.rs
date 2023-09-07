@@ -812,12 +812,12 @@ macro_rules! tokens {
                     } else {
                         return Err(Error::empty());
                     }
+                    let p1: $t31 = input.parse()?;
                     if let Entry::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()? {
 
                     } else {
                         return Err(Error::empty());
                     }
-                    let p1: $t31 = input.parse()?;
                     let _p2: $t32 = input.parse()?;
                     let p3: $t33 = input.parse()?;
                     Ok(Self {
