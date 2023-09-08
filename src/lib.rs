@@ -445,6 +445,22 @@ impl<'a> ParseBuffer<'a> {
         })
     }
 
+    /// Parses `T1` and `T2`, with no whitespace allowed between them.
+    pub fn parse_joint<T1: Token, T2: Token>(&self) -> Result<(T1, T2)> {
+        if self.current()?.span().end < self.next()?.span().start {
+            return Err(Error::new(
+                Rc::clone(&self.source),
+                ErrorKind::UnexpectedToken {
+                    expected: HashSet::from_iter([T1::display() + &T2::display()]),
+                    span: self.current()?.span().to_owned(),
+                },
+            ));
+        }
+        let t1 = self.parse()?;
+        let t2 = self.parse()?;
+        Ok((t1, t2))
+    }
+
     /// Returns true if the next token is an instance of `T`.
     pub fn peek<T: Peek>(&self, token: T) -> bool {
         let _ = token;
