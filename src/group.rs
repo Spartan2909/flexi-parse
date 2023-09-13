@@ -316,6 +316,13 @@ impl<D: Delimiters> Group<D> {
     pub fn remove_whitespace(&mut self) {
         self.token_stream.remove_whitespace();
     }
+
+    /// Consumes `self`, returning a new [`Group<D>`] with all whitespace
+    /// removed.
+    pub fn without_whitespace(mut self) -> Group<D> {
+        self.remove_whitespace();
+        self
+    }
 }
 
 impl<D: Delimiters> Parse for Group<D> {
@@ -330,4 +337,71 @@ impl<D: Delimiters> Parse for Group<D> {
             _marker: PhantomData,
         })
     }
+}
+
+/// A macro to easily parse a delimited group.
+/// 
+/// Similar in concept to [`syn::parenthesized`][parenthesized] and family, but
+/// compatible with anything implementing the [`Delimiters`] trait.
+/// 
+/// [parenthesized]: https://docs.rs/syn/latest/syn/macro.parenthesized.html
+///
+/// ```
+/// # use flexi_parse::group;
+/// # use flexi_parse::group::Braces;
+/// # use flexi_parse::group::Group;
+/// # use flexi_parse::token::LitInt;
+/// # use flexi_parse::Parse;
+/// # use flexi_parse::ParseStream;
+/// # use flexi_parse::Punct;
+/// # use flexi_parse::Result;
+/// # use flexi_parse::parse_string;
+///
+/// enum Statement {
+///     Block(Block),
+///     Number(LitInt, Punct![";"]),
+///     // Other nodes
+/// }
+///
+/// impl Parse for Statement {
+///     fn parse(input: ParseStream<'_>) -> Result<Self> {
+///         if input.peek(Punct!["{"]) {
+///             Ok(Statement::Block(input.parse()?))
+///         } else if input.peek(LitInt) {
+///             Ok(Statement::Number(input.parse()?, input.parse()?))
+///         } else {
+///             // Other nodes
+///             # todo!()
+///         }
+///     }
+/// }
+///
+/// struct Block {
+///     braces: Braces,
+///     statements: Vec<Statement>,
+/// }
+///
+/// impl Parse for Block {
+///     fn parse(input: ParseStream<'_>) -> Result<Self> {
+///         let content: Group<Braces>;
+///         Ok(Block {
+///             braces: group!(content in input),
+///             statements: input.parse_repeated()?,
+///         })
+///     }
+/// }
+///
+/// # fn main () {
+/// let ast: Statement = parse_string("{
+///     3; 5;
+/// }".to_string()).unwrap();
+/// # }
+///
+/// ```
+#[macro_export]
+macro_rules! group {
+    ($tokens:ident in $input:expr) => {{
+        $tokens = $crate::group::Group::without_whitespace($input.parse()?);
+        $tokens.delimiters()
+    }};
 }
