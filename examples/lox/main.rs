@@ -688,7 +688,7 @@ impl Ast {
     fn synchronise(input: ParseStream<'_>) {
         input.synchronise(|input| {
             use kw::*;
-            input.peek(Punct![";"])
+            input.peek(Punct![";"]) && !input.peek2(Punct!["}"])
                 || peek2_any!(
                     input,
                     keyword_class,
