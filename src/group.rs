@@ -312,7 +312,7 @@ impl<D: Delimiters> Group<D> {
         D::from(self.span.clone())
     }
 
-    /// Removes whitespace from the tokenstream in `self`.
+    /// Removes all whitespace from the [`TokenStream`] in `self`.
     pub fn remove_whitespace(&mut self) {
         self.token_stream.remove_whitespace();
     }
