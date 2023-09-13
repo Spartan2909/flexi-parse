@@ -383,7 +383,7 @@ impl<D: Delimiters> Parse for Group<D> {
 ///
 /// impl Parse for Block {
 ///     fn parse(input: ParseStream<'_>) -> Result<Self> {
-///         let content: Group<Braces>;
+///         let content;
 ///         Ok(Block {
 ///             braces: group!(content in input),
 ///             statements: input.parse_repeated()?,
