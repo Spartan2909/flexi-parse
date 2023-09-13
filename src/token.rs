@@ -1426,8 +1426,6 @@ macro_rules! keywords {
     };
 }
 
-pub use keywords;
-
 /// Generate types for keywords, with the type names prefixed with `keyword_`.
 ///
 /// ## Usage
@@ -1528,4 +1526,91 @@ macro_rules! keywords_prefixed {
     };
 }
 
-pub use keywords_prefixed;
+/// A macro to get the type of a punctuation token.
+///
+/// To avoid ambiguity, whitespace tokens are not available through this this
+/// macro. Instead, use them directly, such as in `token::Space4`.
+///
+/// If the punctuation you want is not recognised by this macro, split it into
+/// its constituent parts, e.g. `Punct!["£", "$"]` for `£$` or
+/// `Punct!["++", "-"]` for `++-`.
+///
+/// Note that unlike [`syn::Token`], this macro accepts the token as a quoted
+/// string. This allows tokens not recognised by the Rust scanner to be
+/// accessed with this macro.
+///
+/// [`syn::Token`]: https://docs.rs/syn/latest/syn/macro.Token.html
+#[macro_export]
+macro_rules! Punct {
+    ["&"] => { $crate::token::Ampersand };
+    ["&&"] => { $crate::token::AmpersandAmpersand };
+    ["*"] => { $crate::token::Asterisk };
+    ["*="] => { $crate::token::AsteriskEqual };
+    ["@"] => { $crate::token::At };
+    ["\\"] => { $crate::token::Backslash };
+    ["`"] => { $crate::token::BackTick };
+    ["!"] => { $crate::token::Bang };
+    ["!="] => { $crate::token::BangEqual };
+    ["^"] => { $crate::token::Caret };
+    [":"] => { $crate::token::Colon };
+    ["::"] => { $crate::token::ColonColon };
+    ["::"] => { $crate::token::ColonColonEqual };
+    [","] => { $crate::token::Comma };
+    ["-"] => { $crate::token::Dash };
+    ["--"] => { $crate::token::DashDash };
+    ["-="] => { $crate::token::DashEqual };
+    ["$"] => { $crate::token::Dollar };
+    ["."] => { $crate::token::Dot };
+    ["\""] => { $crate::token::DoubleQuote };
+    ["="] => { $crate::token::Equal };
+    ["=="] => { $crate::token::EqualEqual };
+    ["=>"] => { $crate::token::FatArrow };
+    ["#"] => { $crate::token::Hash };
+    ["##"] => { $crate::token::HashHash };
+    ["###"] => { $crate::token::HashHashHash };
+    ["<"] => { $crate::token::LAngle };
+    ["<="] => { $crate::token::LAngleEqual };
+    ["<<"] => { $crate::token::LAngleLAngle };
+    ["<<="] => { $crate::token::LAngleLAngleEqual };
+    ["<-"] => { $crate::token::LThinArrow };
+    ["{"] => { $crate::token::LeftBrace };
+    ["["] => { $crate::token::LeftBracket };
+    ["("] => { $crate::token::LeftParen };
+    ["\n"] => { $crate::token::NewLine };
+    ["%"] => { $crate::token::Percent };
+    ["%="] => { $crate::token::PercentEqual };
+    ["|"] => { $crate::token::Pipe };
+    ["||"] => { $crate::token::PipePipe };
+    ["+"] => { $crate::token::Plus };
+    ["+="] => { $crate::token::PlusEqual };
+    ["++"] => { $crate::token::PlusPlus };
+    ["£"] => { $crate::token::Pound };
+    ["?"] => { $crate::token::Question };
+    [">"] => { $crate::token::RAngle };
+    [">="] => { $crate::token::RAngleEqual };
+    [">>"] => { $crate::token::RAngleRAngle };
+    [">>="] => { $crate::token::RAngleRAngleEqual };
+    ["->"] => { $crate::token::RThinArrow };
+    ["}"] => { $crate::token::RightBrace };
+    ["]"] => { $crate::token::RightBracket };
+    [")"] => { $crate::token::RightParen };
+    [";"] => { $crate::token::SemiColon };
+    ["'"] => { $crate::token::SingleQuote };
+    ["/"] => { $crate::token::Slash };
+    ["/="] => { $crate::token::SlashEqual };
+    ["//"] => { $crate::token::SlashSlash };
+    ["//="] => { $crate::token::SlashSlashEqual };
+    ["  "] => { $crate::token::Space2 };
+    ["    "] => { $crate::token::Space4 };
+    ["\t"] => { $crate::token::Tab };
+    ["~"] => { $crate::token::Tilde };
+    ["¬"] => { $crate::token::Tilde2 };
+    ["_"] => { $crate::token::UnderScore };
+    [$l:tt, $( $r:tt ),+] => {
+        ($crate::Punct![impl $l, $( $r ),+], $crate::Span)
+    };
+    [impl $l:tt] => { ($crate::Punct![$l],) };
+    [impl $l:tt, $( $r:tt ),+] => {
+        (($crate::Punct![$l],), $crate::Punct![impl $( $r ),+])
+    };
+}
