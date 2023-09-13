@@ -461,6 +461,21 @@ impl<'a> ParseBuffer<'a> {
         Ok((t1, t2))
     }
 
+    /// Attempts to parse `self` into `Vec<T>`, with no separating punctuation,
+    /// fully consuming `self`.
+    ///
+    /// To parse separated instances of `T`, see
+    /// [Punctuated][punctuated::Punctuated].
+    pub fn parse_repeated<T: Parse>(&self) -> Result<Vec<T>> {
+        let mut items = vec![];
+
+        while !self.is_empty() {
+            items.push(self.parse()?);
+        }
+
+        Ok(items)
+    }
+
     /// Returns true if the next token is an instance of `T`.
     pub fn peek<T: Peek>(&self, token: T) -> bool {
         let _ = token;
