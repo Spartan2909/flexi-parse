@@ -34,7 +34,6 @@ pub mod group;
 mod lookahead;
 pub use lookahead::Lookahead;
 pub use lookahead::Peek;
-pub use lookahead::TokenLike;
 
 pub mod punctuated;
 
@@ -480,10 +479,6 @@ impl<'a> ParseBuffer<'a> {
     pub fn peek<T: Peek>(&self, token: T) -> bool {
         let _ = token;
         self.parse_undo::<T::Token>().is_ok()
-    }
-
-    fn peek_turbofish<T: Token>(&self) -> bool {
-        self.parse_undo::<T>().is_ok()
     }
 
     /// Returns true if the next token is an instance of `T`.
