@@ -183,6 +183,12 @@ impl Delimiters for Braces {
 #[derive(Debug, Clone)]
 pub struct AngleBrackets(pub Span);
 
+impl PartialEq for AngleBrackets {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
 impl From<Span> for AngleBrackets {
     fn from(value: Span) -> Self {
         AngleBrackets(value)
