@@ -340,10 +340,10 @@ impl<D: Delimiters> Parse for Group<D> {
 }
 
 /// A macro to easily parse a delimited group.
-/// 
+///
 /// Similar in concept to [`syn::parenthesized`][parenthesized] and family, but
 /// compatible with anything implementing the [`Delimiters`] trait.
-/// 
+///
 /// [parenthesized]: https://docs.rs/syn/latest/syn/macro.parenthesized.html
 ///
 /// ```
