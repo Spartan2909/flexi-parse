@@ -362,6 +362,8 @@ impl<D: Delimiters> Parse for Group<D> {
 /// # use flexi_parse::Punct;
 /// # use flexi_parse::Result;
 /// # use flexi_parse::parse_string;
+/// # use flexi_parse::parse_repeated;
+/// # use flexi_parse::Parser as _;
 ///
 /// enum Statement {
 ///     Block(Block),
@@ -377,7 +379,7 @@ impl<D: Delimiters> Parse for Group<D> {
 ///             Ok(Statement::Number(input.parse()?, input.parse()?))
 ///         } else {
 ///             // Other nodes
-///             # todo!()
+///             # unreachable!()
 ///         }
 ///     }
 /// }
@@ -392,22 +394,24 @@ impl<D: Delimiters> Parse for Group<D> {
 ///         let content;
 ///         Ok(Block {
 ///             braces: group!(content in input),
-///             statements: input.parse_repeated()?,
+///             statements: parse_repeated.parse(content)?,
 ///         })
 ///     }
 /// }
-///
 /// # fn main () {
 /// let ast: Statement = parse_string("{
 ///     3; 5;
 /// }".to_string()).unwrap();
+///
 /// # }
 ///
 /// ```
 #[macro_export]
 macro_rules! group {
     ($tokens:ident in $input:expr) => {{
-        $tokens = $crate::group::Group::without_whitespace($input.parse()?);
-        $tokens.delimiters()
+        let _tmp = $crate::group::Group::without_whitespace($input.parse()?);
+        let _delims = _tmp.delimiters();
+        $tokens = _tmp.into_token_stream();
+        _delims
     }};
 }
