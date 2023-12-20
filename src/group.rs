@@ -86,7 +86,7 @@ use std::sync::Arc;
 ///
 /// For more information, see the [module documentation][module].
 ///
-/// [module]: crate::group#the-delimiter-trait
+/// [module]: mod@crate::group#the-delimiter-trait
 pub trait Delimiters: From<Span> {
     /// The opening delimiter, e.g. `(`.
     type Start: Punct;

@@ -1,7 +1,7 @@
 //! Tokens representing punctuation, identifiers, keywords, and whitespace.
 //!
 //! Types for parsing delimited groups can be found in the
-//! [`group`](crate::group) module.
+//! [`group`](mod@crate::group) module.
 //!
 //! The punctuation tokens can be most easily accessed using the
 //! [`Punct`](crate::Punct) macro.
