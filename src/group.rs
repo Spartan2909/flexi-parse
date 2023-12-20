@@ -79,6 +79,8 @@ use crate::Result;
 use crate::Span;
 use crate::TokenStream;
 
+use std::cmp::Ordering;
+use std::hash;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -111,6 +113,24 @@ impl PartialEq for Parentheses {
     }
 }
 
+impl Eq for Parentheses {}
+
+impl PartialOrd for Parentheses {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Parentheses {
+    fn cmp(&self, _: &Self) -> Ordering {
+        Ordering::Equal
+    }
+}
+
+impl hash::Hash for Parentheses {
+    fn hash<H: hash::Hasher>(&self, _: &mut H) {}
+}
+
 impl From<Span> for Parentheses {
     fn from(value: Span) -> Self {
         Parentheses(value)
@@ -135,6 +155,24 @@ impl PartialEq for Brackets {
     fn eq(&self, _other: &Self) -> bool {
         true
     }
+}
+
+impl Eq for Brackets {}
+
+impl PartialOrd for Brackets {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Brackets {
+    fn cmp(&self, _: &Self) -> Ordering {
+        Ordering::Equal
+    }
+}
+
+impl hash::Hash for Brackets {
+    fn hash<H: hash::Hasher>(&self, _: &mut H) {}
 }
 
 impl From<Span> for Brackets {
@@ -163,6 +201,24 @@ impl PartialEq for Braces {
     }
 }
 
+impl Eq for Braces {}
+
+impl PartialOrd for Braces {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Braces {
+    fn cmp(&self, _: &Self) -> Ordering {
+        Ordering::Equal
+    }
+}
+
+impl hash::Hash for Braces {
+    fn hash<H: hash::Hasher>(&self, _: &mut H) {}
+}
+
 impl From<Span> for Braces {
     fn from(value: Span) -> Self {
         Braces(value)
@@ -187,6 +243,24 @@ impl PartialEq for AngleBrackets {
     fn eq(&self, _other: &Self) -> bool {
         true
     }
+}
+
+impl Eq for AngleBrackets {}
+
+impl PartialOrd for AngleBrackets {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for AngleBrackets {
+    fn cmp(&self, _: &Self) -> Ordering {
+        Ordering::Equal
+    }
+}
+
+impl hash::Hash for AngleBrackets {
+    fn hash<H: hash::Hasher>(&self, _: &mut H) {}
 }
 
 impl From<Span> for AngleBrackets {
@@ -220,6 +294,24 @@ impl PartialEq for SingleQuotes {
     }
 }
 
+impl Eq for SingleQuotes {}
+
+impl PartialOrd for SingleQuotes {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SingleQuotes {
+    fn cmp(&self, _: &Self) -> Ordering {
+        Ordering::Equal
+    }
+}
+
+impl hash::Hash for SingleQuotes {
+    fn hash<H: hash::Hasher>(&self, _: &mut H) {}
+}
+
 impl From<Span> for SingleQuotes {
     fn from(value: Span) -> Self {
         SingleQuotes(value)
@@ -244,6 +336,24 @@ impl PartialEq for DoubleQuotes {
     fn eq(&self, _other: &Self) -> bool {
         true
     }
+}
+
+impl Eq for DoubleQuotes {}
+
+impl PartialOrd for DoubleQuotes {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for DoubleQuotes {
+    fn cmp(&self, _: &Self) -> Ordering {
+        Ordering::Equal
+    }
+}
+
+impl hash::Hash for DoubleQuotes {
+    fn hash<H: hash::Hasher>(&self, _: &mut H) {}
 }
 
 impl From<Span> for DoubleQuotes {
@@ -333,6 +443,26 @@ impl<D: Delimiters> Group<D> {
     pub fn without_whitespace(mut self) -> Group<D> {
         self.remove_whitespace();
         self
+    }
+}
+
+impl<D> PartialEq for Group<D> {
+    fn eq(&self, other: &Self) -> bool {
+        self.token_stream == other.token_stream
+    }
+}
+
+impl<D> Eq for Group<D> {}
+
+impl<D> PartialOrd for Group<D> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.token_stream.partial_cmp(&other.token_stream)
+    }
+}
+
+impl<D> hash::Hash for Group<D> {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.token_stream.hash(state);
     }
 }
 

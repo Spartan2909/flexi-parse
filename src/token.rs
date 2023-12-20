@@ -22,6 +22,7 @@ use crate::Span;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::fmt;
+use std::hash;
 use std::result;
 use std::sync::Arc;
 
@@ -102,6 +103,12 @@ impl Ord for LitStrDoubleQuote {
     }
 }
 
+impl hash::Hash for LitStrDoubleQuote {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.string.hash(state);
+    }
+}
+
 impl Parse for LitStrDoubleQuote {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let (start, end, _) = parse_delimiters::<DoubleQuotes>(input).map_err(|mut err| {
@@ -173,6 +180,12 @@ impl Ord for LitStrSingleQuote {
     }
 }
 
+impl hash::Hash for LitStrSingleQuote {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.string.hash(state);
+    }
+}
+
 impl Parse for LitStrSingleQuote {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let (start, end, _) = parse_delimiters::<SingleQuotes>(input).map_err(|mut err| {
@@ -241,6 +254,12 @@ impl PartialOrd for LitChar {
 impl Ord for LitChar {
     fn cmp(&self, other: &Self) -> Ordering {
         self.ch.cmp(&other.ch)
+    }
+}
+
+impl hash::Hash for LitChar {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.ch.hash(state);
     }
 }
 
@@ -331,6 +350,24 @@ impl PartialEq for Ident {
 
 impl Eq for Ident {}
 
+impl PartialOrd for Ident {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Ident {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.string.cmp(&other.string)
+    }
+}
+
+impl hash::Hash for Ident {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.string.hash(state);
+    }
+}
+
 impl TryFrom<Entry> for Ident {
     type Error = Entry;
 
@@ -397,6 +434,27 @@ impl PartialEq for SingleCharPunct {
 
 impl Eq for SingleCharPunct {}
 
+impl PartialOrd for SingleCharPunct {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SingleCharPunct {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.kind
+            .cmp(&other.kind)
+            .then(self.spacing.cmp(&other.spacing))
+    }
+}
+
+impl hash::Hash for SingleCharPunct {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.kind.hash(state);
+        self.spacing.hash(state);
+    }
+}
+
 impl<'a> TryFrom<&'a Entry> for &'a SingleCharPunct {
     type Error = ();
 
@@ -409,7 +467,7 @@ impl<'a> TryFrom<&'a Entry> for &'a SingleCharPunct {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum Spacing {
     Alone,
     Joint,
@@ -510,6 +568,12 @@ impl PartialOrd for LitInt {
 impl Ord for LitInt {
     fn cmp(&self, other: &Self) -> Ordering {
         self.value.cmp(&other.value)
+    }
+}
+
+impl hash::Hash for LitInt {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.value.hash(state);
     }
 }
 
@@ -690,6 +754,24 @@ macro_rules! tokens {
                 }
             }
 
+            impl Eq for $t1 {}
+
+            impl PartialOrd for $t1 {
+                fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                    Some(self.cmp(other))
+                }
+            }
+
+            impl Ord for $t1 {
+                fn cmp(&self, _: &Self) -> Ordering {
+                    Ordering::Equal
+                }
+            }
+
+            impl hash::Hash for $t1 {
+                fn hash<H: hash::Hasher>(&self, _: &mut H) {}
+            }
+
             #[doc(hidden)]
             #[allow(non_snake_case)]
             pub const fn $t1(marker: Marker) -> $t1 {
@@ -697,7 +779,7 @@ macro_rules! tokens {
             }
         )+
 
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub(crate) enum PunctKind {
             $( $t1 ),+
         }
@@ -791,6 +873,24 @@ macro_rules! tokens {
                 }
             }
 
+            impl Eq for $t2 {}
+
+            impl PartialOrd for $t2 {
+                fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                    Some(self.cmp(other))
+                }
+            }
+
+            impl Ord for $t2 {
+                fn cmp(&self, _: &Self) -> Ordering {
+                    Ordering::Equal
+                }
+            }
+
+            impl hash::Hash for $t2 {
+                fn hash<H: hash::Hasher>(&self, _: &mut H) {}
+            }
+
             #[doc(hidden)]
             #[allow(non_snake_case)]
             pub const fn $t2(marker: Marker) -> $t2 {
@@ -871,6 +971,24 @@ macro_rules! tokens {
                 fn eq(&self, _other: &Self) -> bool {
                     true
                 }
+            }
+
+            impl Eq for $t3 {}
+
+            impl PartialOrd for $t3 {
+                fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                    Some(self.cmp(other))
+                }
+            }
+
+            impl Ord for $t3 {
+                fn cmp(&self, _: &Self) -> Ordering {
+                    Ordering::Equal
+                }
+            }
+
+            impl hash::Hash for $t3 {
+                fn hash<H: hash::Hasher>(&self, _: &mut H) {}
             }
 
             #[doc(hidden)]
@@ -1021,7 +1139,7 @@ impl<T: JoinedPunct> Punct for (T, Span) {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum WhiteSpace {
     Space2(Space2),
     Tab(Tab),
@@ -1067,18 +1185,6 @@ impl WhiteSpace {
     }
 }
 
-impl PartialEq for WhiteSpace {
-    fn eq(&self, other: &Self) -> bool {
-        matches!(
-            (self, other),
-            (WhiteSpace::Space2(_), WhiteSpace::Space2(_))
-                | (WhiteSpace::Tab(_), WhiteSpace::Tab(_))
-                | (WhiteSpace::NewLine(_), WhiteSpace::NewLine(_))
-                | (WhiteSpace::CarriageReturn(_), WhiteSpace::CarriageReturn(_))
-        )
-    }
-}
-
 /// `  `
 #[derive(Debug, Clone)]
 pub struct Space2 {
@@ -1120,6 +1226,22 @@ impl PartialEq for Space2 {
 }
 
 impl Eq for Space2 {}
+
+impl PartialOrd for Space2 {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Space2 {
+    fn cmp(&self, _: &Self) -> Ordering {
+        Ordering::Equal
+    }
+}
+
+impl hash::Hash for Space2 {
+    fn hash<H: hash::Hasher>(&self, _: &mut H) {}
+}
 
 #[doc(hidden)]
 #[allow(non_snake_case)]
@@ -1179,6 +1301,22 @@ impl PartialEq for Space4 {
 
 impl Eq for Space4 {}
 
+impl PartialOrd for Space4 {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Space4 {
+    fn cmp(&self, _: &Self) -> Ordering {
+        Ordering::Equal
+    }
+}
+
+impl hash::Hash for Space4 {
+    fn hash<H: hash::Hasher>(&self, _: &mut H) {}
+}
+
 #[doc(hidden)]
 #[allow(non_snake_case)]
 pub const fn Space4(marker: Marker) -> Space4 {
@@ -1225,6 +1363,22 @@ impl PartialEq for Tab {
 }
 
 impl Eq for Tab {}
+
+impl PartialOrd for Tab {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Tab {
+    fn cmp(&self, _: &Self) -> Ordering {
+        Ordering::Equal
+    }
+}
+
+impl hash::Hash for Tab {
+    fn hash<H: hash::Hasher>(&self, _: &mut H) {}
+}
 
 #[doc(hidden)]
 #[allow(non_snake_case)]
@@ -1273,6 +1427,22 @@ impl PartialEq for NewLine {
 
 impl Eq for NewLine {}
 
+impl PartialOrd for NewLine {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for NewLine {
+    fn cmp(&self, _: &Self) -> Ordering {
+        Ordering::Equal
+    }
+}
+
+impl hash::Hash for NewLine {
+    fn hash<H: hash::Hasher>(&self, _: &mut H) {}
+}
+
 #[doc(hidden)]
 #[allow(non_snake_case)]
 pub const fn NewLine(marker: Marker) -> NewLine {
@@ -1319,6 +1489,22 @@ impl PartialEq for CarriageReturn {
 }
 
 impl Eq for CarriageReturn {}
+
+impl PartialOrd for CarriageReturn {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for CarriageReturn {
+    fn cmp(&self, _: &Self) -> Ordering {
+        Ordering::Equal
+    }
+}
+
+impl hash::Hash for CarriageReturn {
+    fn hash<H: hash::Hasher>(&self, _: &mut H) {}
+}
 
 #[doc(hidden)]
 #[allow(non_snake_case)]

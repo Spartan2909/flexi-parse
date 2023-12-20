@@ -45,7 +45,7 @@ mod proc_macro;
 /// A struct representing a file of source code.
 ///
 /// This type is the input to [`parse_source`].
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SourceFile {
     name: String,
     path: Option<String>,
@@ -100,7 +100,7 @@ impl fmt::Debug for SourceFile {
 /// the file containing it.
 ///
 /// [`proc_macro::Span`]: https://doc.rust-lang.org/stable/proc_macro/struct.Span.html
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Span {
     start: usize,
     end: usize,
@@ -291,7 +291,7 @@ pub fn pretty_unwrap<T>(result: Result<T>) -> T {
 ///
 /// [proc-macro]: https://doc.rust-lang.org/proc_macro/struct.TokenStream.html
 /// [proc-macro2]: https://docs.rs/proc-macro2/latest/proc_macro2/struct.TokenStream.html
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub struct TokenStream {
     tokens: Vec<Entry>,
     source: Arc<SourceFile>,
@@ -764,7 +764,7 @@ impl<'a> Clone for Cursor<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 enum Entry {
     Error(Span),
     Ident(Ident),
