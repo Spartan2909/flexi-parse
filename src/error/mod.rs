@@ -13,14 +13,17 @@ use crate::Span;
 
 use std::collections::HashSet;
 use std::fmt;
-use std::rc::Rc;
+use std::sync::Arc;
+
+use strum::EnumDiscriminants;
 
 #[cfg(feature = "ariadne")]
 mod ariadne;
 #[cfg(feature = "ariadne")]
 pub use self::ariadne::Report;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, EnumDiscriminants)]
+#[strum_discriminants(repr(u16))]
 #[repr(u16)]
 pub(crate) enum ErrorKind {
     Silent,
@@ -48,7 +51,7 @@ impl ErrorKind {
     fn code(&self) -> u16 {
         // SAFETY: ErrorKind is `repr(u16)`, making it a `repr(C)` struct with
         // a `u16` as its first field
-        let discriminant = unsafe { *<*const ErrorKind>::from(self).cast::<u16>() };
+        let discriminant = ErrorKindDiscriminants::from(self) as u16;
         if let ErrorKind::Custom { code, .. } = self {
             discriminant + code
         } else {
@@ -95,7 +98,7 @@ fn unexpected_token_message(expected: &HashSet<String>) -> String {
 
 #[derive(Debug, Clone)]
 pub(crate) struct SingleError {
-    source: Rc<SourceFile>,
+    source: Arc<SourceFile>,
     kind: ErrorKind,
 }
 
@@ -112,13 +115,13 @@ pub struct Error {
 }
 
 impl Error {
-    pub(crate) fn new(source: Rc<SourceFile>, kind: ErrorKind) -> Error {
+    pub(crate) fn new(source: Arc<SourceFile>, kind: ErrorKind) -> Error {
         Error {
             errors: vec![SingleError { source, kind }],
         }
     }
 
-    pub(crate) fn empty() -> Error {
+    pub(crate) const fn empty() -> Error {
         Error { errors: vec![] }
     }
 
@@ -126,11 +129,11 @@ impl Error {
         self.errors.is_empty()
     }
 
-    pub(crate) fn eof_to_group(&mut self, span: Span, start: String) {
+    pub(crate) fn eof_to_group(&mut self, span: &Span, start: &str) {
         for error in &mut self.errors {
             if let ErrorKind::EndOfFile(_) = error.kind {
                 error.kind = ErrorKind::UnterminatedGroup {
-                    start: start.clone(),
+                    start: start.to_string(),
                     span: span.clone(),
                 };
             }
@@ -162,6 +165,7 @@ impl Error {
 
     /// Consumes `self` and `other`, returning a new error with the contents of
     /// both.
+    #[must_use]
     pub fn with(mut self, other: Error) -> Self {
         self.add(other);
         self

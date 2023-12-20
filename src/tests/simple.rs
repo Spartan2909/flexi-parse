@@ -1,13 +1,21 @@
+use crate::error::Error;
+use crate::group::Group;
+use crate::group::Parentheses;
 use crate::parse;
+use crate::punctuated::Punctuated;
 use crate::token::Ident;
 use crate::token::LitChar;
 use crate::token::LitFloat;
 use crate::token::LitInt;
 use crate::token::LitStrDoubleQuote;
 use crate::token::LitStrSingleQuote;
+use crate::Lookahead;
+use crate::ParseBuffer;
 use crate::ParseStream;
 use crate::Parser;
+use crate::Punct;
 use crate::Result;
+use crate::Span;
 
 use super::scan;
 
@@ -39,4 +47,17 @@ fn literals() {
     assert_eq!(s1.string(), "It's-a me, Mario!");
     let s2: LitStrSingleQuote = parse(scan("'Hello, world!'")).unwrap();
     assert_eq!(s2.string(), "Hello, world!");
+}
+
+#[test]
+fn send_sync_types() {
+    fn assert_send_sync<T: Send + Sync>() {}
+
+    assert_send_sync::<ParseBuffer>();
+    assert_send_sync::<Span>();
+    assert_send_sync::<Ident>();
+    assert_send_sync::<Group<Parentheses>>();
+    assert_send_sync::<Punctuated<Ident, Punct![","]>>();
+    assert_send_sync::<Lookahead>();
+    assert_send_sync::<Error>();
 }

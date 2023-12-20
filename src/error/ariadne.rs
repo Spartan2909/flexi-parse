@@ -7,7 +7,7 @@ use crate::Span;
 
 use std::io;
 use std::io::Write;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use ariadne::Color;
 use ariadne::Label;
@@ -54,13 +54,16 @@ impl From<&ErrorKind> for ReportKind<'static> {
 /// [`Error::eprint`] method will suffice.
 pub struct Report {
     report: ariadne::Report<'static, Span>,
-    source: Rc<SourceFile>,
+    source: Arc<SourceFile>,
 }
 
 impl Report {
     /// Writes this diagnostic to an implementor of [`Write`].
     ///
     /// For more details, see [`ariadne::Report::write`].
+    ///
+    /// ## Errors
+    /// Forwards any errors from `W::write`.
     pub fn write<W: Write>(&self, w: W) -> io::Result<()> {
         self.report.write(
             (
@@ -74,6 +77,9 @@ impl Report {
     /// Writes this diagnostic to an implementor of [`Write`].
     ///
     /// For more details, see [`ariadne::Report::write_for_stdout`].
+    ///
+    /// ## Errors
+    /// Forwards any errors from `W::write`.
     pub fn write_for_stdout<W: Write>(&self, w: W) -> io::Result<()> {
         self.report.write_for_stdout(
             (
@@ -87,6 +93,9 @@ impl Report {
     /// Prints this diagnostic to stderr.
     ///
     /// For more details, see [`ariadne::Report::eprint`].
+    ///
+    /// ## Errors
+    /// Returns an error if writing to stderr fails.
     pub fn eprint(&self) -> io::Result<()> {
         self.report.eprint((
             self.source.id().to_owned(),
@@ -95,9 +104,12 @@ impl Report {
     }
 
     /// Prints this diagnostic to stdout. In most cases, [`Report::eprint`] is
-    /// preferable.
+    /// preferable to this.
     ///
     /// For more details, see [`ariadne::Report::print`].
+    ///
+    /// ## Errors
+    /// Returns an error if writing to stdout fails.
     pub fn print(&self) -> io::Result<()> {
         self.report.print((
             self.source.id().to_owned(),
@@ -149,7 +161,7 @@ impl From<&SingleError> for Report {
         }
         Report {
             report: builder.finish(),
-            source: Rc::clone(&value.source),
+            source: Arc::clone(&value.source),
         }
     }
 }
@@ -168,11 +180,19 @@ impl From<&Error> for Vec<Report> {
 
 impl Error {
     /// Prints this error to stderr.
+    ///
+    /// ## Errors
+    /// Returns an error if writing to stderr fails.
     pub fn eprint(&self) -> io::Result<()> {
         let reports: Vec<Report> = self.into();
         for report in reports {
             report.eprint()?;
         }
         Ok(())
+    }
+
+    /// Generates a series of reports from `self`.
+    pub fn to_reports(&self) -> Vec<Report> {
+        self.into()
     }
 }

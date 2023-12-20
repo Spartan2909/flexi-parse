@@ -25,11 +25,6 @@ use flexi_parse::token::Token;
 use flexi_parse::Punct;
 use flexi_parse::Result;
 
-mod gc;
-
-use gc::Collector;
-use gc::Gc;
-
 mod natives {
     use super::Value;
 
@@ -139,7 +134,7 @@ impl Function {
         Ok(Value::Nil)
     }
 
-    fn bind(&self, instance: Gc) -> Function {
+    fn bind(&self, instance: &'static RefCell<Instance>) -> Function {
         let scope = self.closure.start_scope();
         scope
             .environment
@@ -215,19 +210,18 @@ impl Instance {
     }
 }
 
-impl Gc {
-    fn get(self, name: &Ident) -> Result<Value> {
-        if let Some(value) = self.fields.get(name.string()) {
-            Ok(value.to_owned())
-        } else if let Some(function) = self.class.find_method(name.string()) {
-            Ok(Value::Function(function.bind(self)))
-        } else {
-            Err(new_error(
-                format!("Undefined property {}", name.string()),
-                name,
-                error_codes::UNDEFINED_NAME,
-            ))
-        }
+fn get(instance: &'static RefCell<Instance>, name: &Ident) -> Result<Value> {
+    let this = instance.borrow();
+    if let Some(value) = this.fields.get(name.string()) {
+        Ok(value.to_owned())
+    } else if let Some(function) = this.class.find_method(name.string()) {
+        Ok(Value::Function(function.bind(instance)))
+    } else {
+        Err(new_error(
+            format!("Undefined property {}", name.string()),
+            name,
+            error_codes::UNDEFINED_NAME,
+        ))
     }
 }
 
@@ -249,7 +243,7 @@ enum Value {
     Native(NativeFunction),
     Function(Function),
     Class(Rc<Class>),
-    Instance(Gc),
+    Instance(&'static RefCell<Instance>),
 }
 
 fn arity_error(parentheses: &Parentheses, expected: usize, actual: usize) -> Error {
@@ -269,7 +263,7 @@ impl Value {
         }
     }
 
-    fn as_instance(&self) -> Option<Gc> {
+    fn as_instance(&self) -> Option<&'static RefCell<Instance>> {
         if let Value::Instance(instance) = self {
             Some(*instance)
         } else {
@@ -376,10 +370,7 @@ impl Value {
                     return Err(arity_error(parentheses, class.arity(), arguments.len()));
                 }
 
-                let instance = state
-                    .collector
-                    .borrow_mut()
-                    .allocate(Instance::new(Rc::clone(class)), &state.globals.borrow());
+                let instance = state.allocate(Instance::new(Rc::clone(class)));
                 if let Some(initialiser) = class.find_method("init") {
                     initialiser.bind(instance).call(arguments, parentheses)?;
                 }
@@ -411,7 +402,7 @@ impl fmt::Display for Value {
                 ..
             }) => write!(f, "<fn {}>", name.string()),
             Value::Class(class) => f.write_str(&class.name),
-            Value::Instance(instance) => write!(f, "{} instance", instance.class.name),
+            Value::Instance(instance) => write!(f, "{} instance", instance.borrow().class.name),
         }
     }
 }
@@ -420,11 +411,10 @@ impl fmt::Display for Value {
 struct State {
     environment: Rc<RefCell<Environment>>,
     globals: Rc<RefCell<Environment>>,
-    collector: Rc<RefCell<Collector>>,
 }
 
 impl State {
-    fn new(collector: Rc<RefCell<Collector>>) -> Self {
+    fn new() -> Self {
         let mut values = HashMap::new();
 
         values.insert(
@@ -446,7 +436,6 @@ impl State {
         State {
             environment: Rc::clone(&environment),
             globals: environment,
-            collector,
         }
     }
 
@@ -465,7 +454,6 @@ impl State {
         State {
             environment,
             globals: Rc::clone(&self.globals),
-            collector: Rc::clone(&self.collector),
         }
     }
 
@@ -473,8 +461,11 @@ impl State {
         Some(State {
             environment: Rc::clone(self.environment.borrow().enclosing.as_ref()?),
             globals: self.globals,
-            collector: self.collector,
         })
+    }
+
+    fn allocate<T>(&self, value: T) -> &'static RefCell<T> {
+        Box::leak(Box::new(RefCell::new(value)))
     }
 }
 
@@ -673,7 +664,7 @@ impl Expr {
             }
             Expr::Get { object, name } => {
                 if let Value::Instance(instance) = object.evaluate(state)? {
-                    instance.get(name)
+                    get(instance, name)
                 } else {
                     Err(new_error(
                         "Only instances have properties".to_string(),
@@ -690,9 +681,9 @@ impl Expr {
                 name,
                 value,
             } => {
-                if let Value::Instance(mut instance) = object.evaluate(state)? {
+                if let Value::Instance(instance) = object.evaluate(state)? {
                     let value = value.evaluate(state)?;
-                    instance.set(name, value.clone());
+                    instance.borrow_mut().set(name, value.clone());
                     Ok(value)
                 } else {
                     Err(new_error(
@@ -887,11 +878,9 @@ impl Stmt {
 }
 
 pub(super) fn interpret(ast: Ast) -> Result<()> {
-    let collector = Rc::new(RefCell::new(Collector::new()));
-    let state = State::new(collector);
+    let state = State::new();
     for stmt in ast.0 {
         stmt.execute(&state)?;
     }
-    state.collector.borrow_mut().collect();
     Ok(())
 }

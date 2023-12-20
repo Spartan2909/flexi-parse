@@ -8,7 +8,7 @@
 
 use crate::error::Error;
 use crate::error::ErrorKind;
-use crate::group::delimited_string;
+use crate::group::parse_delimiters;
 use crate::group::DoubleQuotes;
 use crate::group::SingleQuotes;
 use crate::private::Marker;
@@ -22,8 +22,8 @@ use crate::Span;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::fmt;
-use std::rc::Rc;
 use std::result;
+use std::sync::Arc;
 
 #[doc(hidden)]
 pub use concat_idents::concat_idents;
@@ -32,7 +32,7 @@ pub use concat_idents::concat_idents;
 ///
 /// This trait is sealed, and cannot be implemented by types outside of this
 /// crate.
-pub trait Token: Parse + Sealed {
+pub trait Token: Parse + fmt::Debug + Sealed {
     /// Returns the span covered by this token.
     fn span(&self) -> &Span;
 
@@ -45,10 +45,9 @@ pub trait Token: Parse + Sealed {
 
 impl<T: Token> Parse for Option<T> {
     fn parse(input: ParseStream) -> Result<Self> {
-        match input.try_parse() {
-            Ok(value) => Ok(Some(value)),
-            Err(_) => Ok(None),
-        }
+        input
+            .try_parse()
+            .map_or_else(|_| Ok(None), |value| Ok(Some(value)))
     }
 }
 
@@ -78,7 +77,7 @@ pub struct LitStrDoubleQuote {
 
 impl LitStrDoubleQuote {
     /// Returns the string within the quotes of this literal.
-    pub fn string(&self) -> &String {
+    pub const fn string(&self) -> &String {
         &self.string
     }
 }
@@ -105,7 +104,7 @@ impl Ord for LitStrDoubleQuote {
 
 impl Parse for LitStrDoubleQuote {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let (start, end) = delimited_string::<DoubleQuotes>(input).map_err(|mut err| {
+        let (start, end, _) = parse_delimiters::<DoubleQuotes>(input).map_err(|mut err| {
             err.group_to_string();
             err
         })?;
@@ -134,7 +133,7 @@ impl Token for LitStrDoubleQuote {
 
 #[doc(hidden)]
 #[allow(non_snake_case)]
-pub fn LitStrDoubleQuote(marker: Marker) -> LitStrDoubleQuote {
+pub const fn LitStrDoubleQuote(marker: Marker) -> LitStrDoubleQuote {
     match marker {}
 }
 
@@ -149,7 +148,7 @@ pub struct LitStrSingleQuote {
 
 impl LitStrSingleQuote {
     /// Returns the string within the quotes of this literal.
-    pub fn string(&self) -> &String {
+    pub const fn string(&self) -> &String {
         &self.string
     }
 }
@@ -176,7 +175,7 @@ impl Ord for LitStrSingleQuote {
 
 impl Parse for LitStrSingleQuote {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let (start, end) = delimited_string::<SingleQuotes>(input).map_err(|mut err| {
+        let (start, end, _) = parse_delimiters::<SingleQuotes>(input).map_err(|mut err| {
             err.group_to_string();
             err
         })?;
@@ -205,7 +204,7 @@ impl Token for LitStrSingleQuote {
 
 #[doc(hidden)]
 #[allow(non_snake_case)]
-pub fn LitStrSingleQuote(marker: Marker) -> LitStrSingleQuote {
+pub const fn LitStrSingleQuote(marker: Marker) -> LitStrSingleQuote {
     match marker {}
 }
 
@@ -220,7 +219,7 @@ pub struct LitChar {
 
 impl LitChar {
     /// Returns the character within this literal.
-    pub fn ch(&self) -> char {
+    pub const fn ch(&self) -> char {
         self.ch
     }
 }
@@ -247,7 +246,7 @@ impl Ord for LitChar {
 
 impl Parse for LitChar {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let (start, end) = delimited_string::<SingleQuotes>(input).map_err(|mut err| {
+        let (start, end, _) = parse_delimiters::<SingleQuotes>(input).map_err(|mut err| {
             err.group_to_char();
             err
         })?;
@@ -256,7 +255,7 @@ impl Parse for LitChar {
         let span = Span::across(start, end);
         if string.len() != 1 {
             return Err(Error::new(
-                Rc::clone(&input.source),
+                Arc::clone(&input.source),
                 ErrorKind::LongChar(span),
             ));
         }
@@ -283,7 +282,7 @@ impl Token for LitChar {
 
 #[doc(hidden)]
 #[allow(non_snake_case)]
-pub fn LitChar(marker: Marker) -> LitChar {
+pub const fn LitChar(marker: Marker) -> LitChar {
     match marker {}
 }
 
@@ -297,29 +296,30 @@ pub struct Ident {
 
 impl Ident {
     /// Returns the text that makes up the identifier.
-    pub fn string(&self) -> &String {
+    pub const fn string(&self) -> &String {
         &self.string
     }
 
     /// Creates a new identifier in the given [`ParseStream`] with the given
     /// string.
-    pub fn new(string: String, span: Span) -> Ident {
+    pub const fn new(string: String, span: Span) -> Ident {
         Ident { string, span }
     }
 
-    fn parse_simple(input: ParseStream<'_>) -> Result<Self> {
+    fn parse_simple(input: ParseStream) -> Result<Self> {
         let token = input.next()?;
-        if let Ok(ident) = Self::try_from(token.to_owned()) {
-            Ok(ident)
-        } else {
-            Err(Error::new(
-                Rc::clone(&input.source),
-                ErrorKind::UnexpectedToken {
-                    expected: HashSet::from_iter(["an identifier".to_string()]),
-                    span: token.span().clone(),
-                },
-            ))
-        }
+        Self::try_from(token.to_owned()).map_or_else(
+            |_| {
+                Err(Error::new(
+                    Arc::clone(&input.source),
+                    ErrorKind::UnexpectedToken {
+                        expected: HashSet::from_iter(["an identifier".to_string()]),
+                        span: token.span().clone(),
+                    },
+                ))
+            },
+            Ok,
+        )
     }
 }
 
@@ -348,7 +348,7 @@ impl Parse for Ident {
         let ident = Self::parse_simple(input)?;
         if ident.string.chars().next().unwrap().is_ascii_digit() {
             Err(Error::new(
-                Rc::clone(&input.source),
+                Arc::clone(&input.source),
                 ErrorKind::UnexpectedToken {
                     expected: HashSet::from_iter(["an identifier".to_string()]),
                     span: ident.span().clone(),
@@ -378,7 +378,7 @@ impl Token for Ident {
 
 #[doc(hidden)]
 #[allow(non_snake_case)]
-pub fn Ident(marker: Marker) -> Ident {
+pub const fn Ident(marker: Marker) -> Ident {
     match marker {}
 }
 
@@ -417,15 +417,13 @@ pub(crate) enum Spacing {
 
 impl From<Result<char>> for Spacing {
     fn from(value: Result<char>) -> Self {
-        if let Ok(c) = value {
+        value.map_or(Spacing::Alone, |c| {
             if PunctKind::try_from(c).is_ok() {
                 Spacing::Joint
             } else {
                 Spacing::Alone
             }
-        } else {
-            Spacing::Alone
-        }
+        })
     }
 }
 
@@ -442,11 +440,11 @@ pub struct LitInt {
 
 impl LitInt {
     /// Returns the value of this literal.
-    pub fn value(&self) -> u64 {
+    pub const fn value(&self) -> u64 {
         self.value
     }
 
-    fn parse_decimal_impl(input: ParseStream<'_>) -> Result<Self> {
+    fn parse_decimal_impl(input: ParseStream) -> Result<Self> {
         let ident = Ident::parse_simple(input)?;
         Ok(LitInt {
             value: ident.string.parse().map_err(|_| Error::empty())?,
@@ -454,14 +452,17 @@ impl LitInt {
         })
     }
 
-    /// Accepts a string of ascii digits.
-    pub fn parse_decimal(input: ParseStream<'_>) -> Result<Self> {
+    /// Parses a base 10 integer.
+    ///
+    /// ## Errors
+    /// Returns an error if the input is not a base 10 integer.
+    pub fn parse_decimal(input: ParseStream) -> Result<Self> {
         Self::parse_decimal_impl(input).map_err(|_| {
             input.unexpected_token(HashSet::from_iter(["an integer literal".to_string()]))
         })
     }
 
-    fn parse_impl(input: ParseStream<'_>) -> Result<Self> {
+    fn parse_impl(input: ParseStream) -> Result<Self> {
         let ident = Ident::parse_simple(input)?;
         let mut chars = ident.string().chars();
         let start: u8 = chars
@@ -513,12 +514,11 @@ impl Ord for LitInt {
 }
 
 impl Parse for LitInt {
-    fn parse(input: ParseStream<'_>) -> Result<Self> {
-        if let Ok(lit) = Self::parse_impl(input) {
-            Ok(lit)
-        } else {
-            Err(input.unexpected_token(HashSet::from_iter(["an integer literal".to_string()])))
-        }
+    fn parse(input: ParseStream) -> Result<Self> {
+        Self::parse_impl(input).map_or_else(
+            |_| Err(input.unexpected_token(HashSet::from_iter(["an integer literal".to_string()]))),
+            Ok,
+        )
     }
 }
 
@@ -538,6 +538,7 @@ impl Token for LitInt {
     }
 }
 
+#[allow(clippy::cast_precision_loss)] // Should probably warn on this.
 fn int_to_decimal(int: u64) -> f64 {
     let mut value = int as f64;
     while value >= 1.0 {
@@ -548,7 +549,7 @@ fn int_to_decimal(int: u64) -> f64 {
 
 #[doc(hidden)]
 #[allow(non_snake_case)]
-pub fn LitInt(marker: Marker) -> LitInt {
+pub const fn LitInt(marker: Marker) -> LitInt {
     match marker {}
 }
 
@@ -562,17 +563,18 @@ pub struct LitFloat {
 
 impl LitFloat {
     /// Returns the value of this literal.
-    pub fn value(&self) -> f64 {
+    pub const fn value(&self) -> f64 {
         self.value
     }
 
-    fn parse_impl(input: ParseStream<'_>) -> Result<Self> {
+    #[allow(clippy::cast_precision_loss)] // Should probably warn on this.
+    fn parse_impl(input: ParseStream) -> Result<Self> {
         let start = LitInt::parse_decimal(input)?;
         let _: Dot = input.parse()?;
         let end = LitInt::parse_decimal(input)?;
         Ok(LitFloat {
             value: start.value as f64 + int_to_decimal(end.value),
-            span: Span::new(start.span.start, end.span.end, Rc::clone(&input.source)),
+            span: Span::new(start.span.start, end.span.end, Arc::clone(&input.source)),
         })
     }
 }
@@ -591,11 +593,10 @@ impl PartialOrd for LitFloat {
 
 impl Parse for LitFloat {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        if let Ok(value) = Self::parse_impl(input) {
-            Ok(value)
-        } else {
-            Err(input.unexpected_token(HashSet::from_iter(["a float literal".to_string()])))
-        }
+        Self::parse_impl(input).map_or_else(
+            |_| Err(input.unexpected_token(HashSet::from_iter(["a float literal".to_string()]))),
+            Ok,
+        )
     }
 }
 
@@ -617,7 +618,7 @@ impl Token for LitFloat {
 
 #[doc(hidden)]
 #[allow(non_snake_case)]
-pub fn LitFloat(marker: Marker) -> LitFloat {
+pub const fn LitFloat(marker: Marker) -> LitFloat {
     match marker {}
 }
 
@@ -642,12 +643,12 @@ macro_rules! tokens {
             }
 
             impl Parse for $t1 {
-                fn parse(input: ParseStream<'_>) -> Result<Self> {
+                fn parse(input: ParseStream) -> Result<Self> {
                     let token = input.next()?.to_owned();
                     if let Entry::Punct(SingleCharPunct { kind: PunctKind::$t1, span, .. }) = token {
                         Ok(Self { span })
                     } else {
-                        Err(Error::new(Rc::clone(&input.source), ErrorKind::UnexpectedToken {
+                        Err(Error::new(Arc::clone(&input.source), ErrorKind::UnexpectedToken {
                             expected: HashSet::from_iter(vec![format!("'{}'", $name1)]),
                             span: token.span().clone(),
                         }))
@@ -691,7 +692,7 @@ macro_rules! tokens {
 
             #[doc(hidden)]
             #[allow(non_snake_case)]
-            pub fn $t1(marker: Marker) -> $t1 {
+            pub const fn $t1(marker: Marker) -> $t1 {
                 match marker {}
             }
         )+
@@ -729,7 +730,7 @@ macro_rules! tokens {
             }
 
             impl $t2 {
-                fn from_tokens_impl(input: ParseStream<'_>) -> Result<Self> {
+                fn from_tokens_impl(input: ParseStream) -> Result<Self> {
                     if let Entry::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()? {
 
                     } else {
@@ -745,10 +746,10 @@ macro_rules! tokens {
             }
 
             impl Parse for $t2 {
-                fn parse(input: ParseStream<'_>) -> Result<Self> {
+                fn parse(input: ParseStream) -> Result<Self> {
                     let span = input.current()?.span();
                     Self::from_tokens_impl(input).map_err(|_| {
-                        Error::new(Rc::clone(&input.source), ErrorKind::UnexpectedToken {
+                        Error::new(Arc::clone(&input.source), ErrorKind::UnexpectedToken {
                             expected: HashSet::from_iter(vec![format!("'{}'", $name2)]),
                             span: span.clone(),
                         })
@@ -792,7 +793,7 @@ macro_rules! tokens {
 
             #[doc(hidden)]
             #[allow(non_snake_case)]
-            pub fn $t2(marker: Marker) -> $t2 {
+            pub const fn $t2(marker: Marker) -> $t2 {
                 match marker {}
             }
         )+
@@ -806,7 +807,7 @@ macro_rules! tokens {
             }
 
             impl $t3 {
-                fn from_tokens_impl(input: ParseStream<'_>) -> Result<Self> {
+                fn from_tokens_impl(input: ParseStream) -> Result<Self> {
                     if let Entry::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()? {
 
                     } else {
@@ -827,10 +828,10 @@ macro_rules! tokens {
             }
 
             impl Parse for $t3 {
-                fn parse(input: ParseStream<'_>) -> Result<Self> {
+                fn parse(input: ParseStream) -> Result<Self> {
                     let span = input.current()?.span();
                     Self::from_tokens_impl(input).map_err(|_| {
-                        Error::new(Rc::clone(&input.source), ErrorKind::UnexpectedToken {
+                        Error::new(Arc::clone(&input.source), ErrorKind::UnexpectedToken {
                             expected: HashSet::from_iter(vec![format!("'{}'", $name3)]),
                             span: span.clone(),
                         })
@@ -874,7 +875,7 @@ macro_rules! tokens {
 
             #[doc(hidden)]
             #[allow(non_snake_case)]
-            pub fn $t3(marker: Marker) -> $t3 {
+            pub const fn $t3(marker: Marker) -> $t3 {
                 match marker {}
             }
         )+
@@ -950,10 +951,10 @@ tokens! {
     }
 }
 
-trait JoinedPunct: Sized {
+trait JoinedPunct: Sized + fmt::Debug {
     fn display() -> String;
 
-    fn parse(input: ParseStream<'_>) -> Result<Self>;
+    fn parse(input: ParseStream) -> Result<Self>;
 }
 
 impl<T1: JoinedPunct, T2: JoinedPunct> JoinedPunct for (T1, T2) {
@@ -961,7 +962,7 @@ impl<T1: JoinedPunct, T2: JoinedPunct> JoinedPunct for (T1, T2) {
         T1::display() + &T2::display()
     }
 
-    fn parse(input: ParseStream<'_>) -> Result<Self> {
+    fn parse(input: ParseStream) -> Result<Self> {
         Ok((T1::parse(input)?, T2::parse(input)?))
     }
 }
@@ -971,17 +972,17 @@ impl<T: Punct> JoinedPunct for (T,) {
         T::display()
     }
 
-    fn parse(input: ParseStream<'_>) -> Result<Self> {
+    fn parse(input: ParseStream) -> Result<Self> {
         T::parse(input).map(|value| (value,))
     }
 }
 
 impl<T: JoinedPunct> Parse for (T, Span) {
-    fn parse(input: ParseStream<'_>) -> Result<Self> {
+    fn parse(input: ParseStream) -> Result<Self> {
         let span = input.current()?.span();
         let value = T::parse(input).map_err(|_| {
             Error::new(
-                Rc::clone(&input.source),
+                Arc::clone(&input.source),
                 ErrorKind::UnexpectedToken {
                     expected: HashSet::from_iter(vec![T::display()]),
                     span: span.clone(),
@@ -991,7 +992,7 @@ impl<T: JoinedPunct> Parse for (T, Span) {
         let span = Span::new(
             span.start,
             input.get_relative(-1)?.span().end,
-            Rc::clone(&input.source),
+            Arc::clone(&input.source),
         );
         Ok((value, span))
     }
@@ -1015,7 +1016,7 @@ impl<T: JoinedPunct> Token for (T, Span) {
 }
 
 impl<T: JoinedPunct> Punct for (T, Span) {
-    fn peek(input: ParseStream<'_>) -> bool {
+    fn peek(input: ParseStream) -> bool {
         input.parse_undo::<(T, Span)>().is_ok()
     }
 }
@@ -1029,7 +1030,7 @@ pub(crate) enum WhiteSpace {
 }
 
 impl WhiteSpace {
-    pub(crate) fn span(&self) -> &Span {
+    pub(crate) const fn span(&self) -> &Span {
         match self {
             WhiteSpace::Space2(Space2 { span })
             | WhiteSpace::Tab(Tab { span })
@@ -1122,7 +1123,7 @@ impl Eq for Space2 {}
 
 #[doc(hidden)]
 #[allow(non_snake_case)]
-pub fn Space2(marker: Marker) -> Space2 {
+pub const fn Space2(marker: Marker) -> Space2 {
     match marker {}
 }
 
@@ -1134,7 +1135,7 @@ pub struct Space4 {
 }
 
 impl Space4 {
-    fn parse_impl(input: ParseStream<'_>) -> Result<Self> {
+    fn parse_impl(input: ParseStream) -> Result<Self> {
         let start: Space2 = input.parse()?;
         let end: Space2 = input.parse()?;
         if start.span.end != end.span.start {
@@ -1147,7 +1148,7 @@ impl Space4 {
 }
 
 impl Parse for Space4 {
-    fn parse(input: ParseStream<'_>) -> Result<Self> {
+    fn parse(input: ParseStream) -> Result<Self> {
         Self::parse_impl(input).map_err(|_| {
             input.unexpected_token(HashSet::from_iter(["a four-space tab".to_string()]))
         })
@@ -1180,7 +1181,7 @@ impl Eq for Space4 {}
 
 #[doc(hidden)]
 #[allow(non_snake_case)]
-pub fn Space4(marker: Marker) -> Space4 {
+pub const fn Space4(marker: Marker) -> Space4 {
     match marker {}
 }
 
@@ -1227,7 +1228,7 @@ impl Eq for Tab {}
 
 #[doc(hidden)]
 #[allow(non_snake_case)]
-pub fn Tab(marker: Marker) -> Tab {
+pub const fn Tab(marker: Marker) -> Tab {
     match marker {}
 }
 
@@ -1274,7 +1275,7 @@ impl Eq for NewLine {}
 
 #[doc(hidden)]
 #[allow(non_snake_case)]
-pub fn NewLine(marker: Marker) -> NewLine {
+pub const fn NewLine(marker: Marker) -> NewLine {
     match marker {}
 }
 
@@ -1286,7 +1287,7 @@ pub struct CarriageReturn {
 }
 
 impl Parse for CarriageReturn {
-    fn parse(input: ParseStream<'_>) -> Result<Self> {
+    fn parse(input: ParseStream) -> Result<Self> {
         if let Entry::WhiteSpace(WhiteSpace::CarriageReturn(value)) = input.next()? {
             Ok(value.clone())
         } else {
@@ -1321,7 +1322,7 @@ impl Eq for CarriageReturn {}
 
 #[doc(hidden)]
 #[allow(non_snake_case)]
-pub fn CarriageReturn(marker: Marker) -> CarriageReturn {
+pub const fn CarriageReturn(marker: Marker) -> CarriageReturn {
     match marker {}
 }
 
@@ -1353,20 +1354,20 @@ macro_rules! keywords {
 
             impl $kw {
                 #[allow(dead_code)]
-                pub fn new(input: $crate::ParseStream<'_>) -> Self {
+                pub fn new(input: $crate::ParseStream) -> Self {
                     Self {
                         ident: $crate::token::Ident::new(stringify!($kw).to_string(), input.empty_span()),
                     }
                 }
 
                 #[allow(dead_code)]
-                pub fn ident(&self) -> &$crate::token::Ident {
+                pub const fn ident(&self) -> &$crate::token::Ident {
                     &self.ident
                 }
             }
 
             impl $crate::Parse for $kw {
-                fn parse(input: $crate::ParseStream<'_>) -> $crate::Result<Self> {
+                fn parse(input: $crate::ParseStream) -> $crate::Result<Self> {
                     let ident: $crate::token::Ident = input.parse()?;
                     if ident.string() == stringify!($kw) {
                         $crate::Result::Ok(Self {
@@ -1406,14 +1407,14 @@ macro_rules! keywords {
 
             #[doc(hidden)]
             #[allow(dead_code)]
-            pub fn $kw(marker: $crate::private::Marker) -> $kw {
+            pub const fn $kw(marker: $crate::private::Marker) -> $kw {
                 match marker {}
             }
         )+
 
         /// Parses non-keyword identifiers.
         #[allow(dead_code)]
-        pub fn ident(input: $crate::ParseStream<'_>) -> $crate::Result<$crate::token::Ident> {
+        pub fn ident(input: $crate::ParseStream) -> $crate::Result<$crate::token::Ident> {
             let ident: $crate::token::Ident = input.parse()?;
             if [$( stringify!($kw) ),+].contains(&ident.string().as_str()) {
                 $crate::Result::Err(input.unexpected_token(
@@ -1454,20 +1455,20 @@ macro_rules! keywords_prefixed {
 
                 impl struct_name {
                     #[allow(dead_code)]
-                    pub fn new(input: $crate::ParseStream<'_>) -> Self {
+                    pub fn new(input: $crate::ParseStream) -> Self {
                         Self {
                             ident: $crate::token::Ident::new($kw.to_string(), input.empty_span()),
                         }
                     }
 
                     #[allow(dead_code)]
-                    pub fn ident(&self) -> &$crate::token::Ident {
+                    pub const fn ident(&self) -> &$crate::token::Ident {
                         &self.ident
                     }
                 }
 
                 impl $crate::Parse for struct_name {
-                    fn parse(input: $crate::ParseStream<'_>) -> $crate::Result<Self> {
+                    fn parse(input: $crate::ParseStream) -> $crate::Result<Self> {
                         let ident: $crate::token::Ident = input.parse()?;
                         if ident.string() == $kw {
                             $crate::Result::Ok(Self {
@@ -1505,7 +1506,7 @@ macro_rules! keywords_prefixed {
 
                 #[doc(hidden)]
                 #[allow(dead_code)]
-                pub fn struct_name(marker: $crate::private::Marker) -> struct_name {
+                pub const fn struct_name(marker: $crate::private::Marker) -> struct_name {
                     match marker {}
                 }
             });
@@ -1513,7 +1514,7 @@ macro_rules! keywords_prefixed {
 
         /// Parses non-keyword identifiers.
         #[allow(dead_code)]
-        pub fn ident(input: $crate::ParseStream<'_>) -> $crate::Result<$crate::token::Ident> {
+        pub fn ident(input: $crate::ParseStream) -> $crate::Result<$crate::token::Ident> {
             let ident: $crate::token::Ident = input.parse()?;
             if [$( $kw ),+].contains(&ident.string().as_str()) {
                 $crate::Result::Err(input.unexpected_token(

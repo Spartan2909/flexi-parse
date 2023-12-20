@@ -1,3 +1,5 @@
+//! An extremely simple command-line calculator.
+
 use flexi_parse::group::Group;
 use flexi_parse::group::Parentheses;
 use flexi_parse::parse;
@@ -36,26 +38,22 @@ impl Expr {
 }
 
 impl Parse for Expr {
-    fn parse(input: ParseStream<'_>) -> Result<Self> {
-        term(input)
-    }
-}
-
-fn term(input: ParseStream<'_>) -> Result<Expr> {
-    let mut expr = factor(input)?;
-    loop {
-        if input.peek(Punct!["+"]) {
-            expr = Expr::Add(Box::new(expr), input.parse()?, Box::new(factor(input)?));
-        } else if input.peek(Punct!["-"]) {
-            expr = Expr::Sub(Box::new(expr), input.parse()?, Box::new(factor(input)?));
-        } else {
-            break;
+    fn parse(input: ParseStream) -> Result<Self> {
+        let mut expr = factor(input)?;
+        loop {
+            if input.peek(Punct!["+"]) {
+                expr = Expr::Add(Box::new(expr), input.parse()?, Box::new(factor(input)?));
+            } else if input.peek(Punct!["-"]) {
+                expr = Expr::Sub(Box::new(expr), input.parse()?, Box::new(factor(input)?));
+            } else {
+                break;
+            }
         }
+        Ok(expr)
     }
-    Ok(expr)
 }
 
-fn factor(input: ParseStream<'_>) -> Result<Expr> {
+fn factor(input: ParseStream) -> Result<Expr> {
     let mut expr: Expr = unary(input)?;
     loop {
         if input.peek(Punct!["*"]) {
@@ -71,7 +69,7 @@ fn factor(input: ParseStream<'_>) -> Result<Expr> {
     Ok(expr)
 }
 
-fn unary(input: ParseStream<'_>) -> Result<Expr> {
+fn unary(input: ParseStream) -> Result<Expr> {
     if input.peek(Punct!["-"]) {
         Ok(Expr::Neg(input.parse()?, Box::new(unary(input)?)))
     } else {
@@ -79,7 +77,7 @@ fn unary(input: ParseStream<'_>) -> Result<Expr> {
     }
 }
 
-fn primary(input: ParseStream<'_>) -> Result<Expr> {
+fn primary(input: ParseStream) -> Result<Expr> {
     let lookahead = input.lookahead();
     if lookahead.peek(token::LitFloat) {
         Ok(Expr::Num(input.parse::<token::LitFloat>()?.value()))

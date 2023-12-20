@@ -3,27 +3,19 @@
 //! combinator, while still being simple to use.
 
 #![cfg_attr(all(doc, not(doctest)), feature(doc_auto_cfg))]
-#![warn(clippy::cast_lossless)]
-#![warn(clippy::semicolon_if_nothing_returned)]
-#![warn(clippy::semicolon_outside_block)]
-#![warn(clippy::significant_drop_tightening)]
-#![warn(missing_docs)]
-#![forbid(clippy::dbg_macro)]
-#![forbid(unsafe_op_in_unsafe_fn)]
-#![forbid(clippy::multiple_unsafe_ops_per_block)]
-#![forbid(clippy::todo)]
-#![forbid(clippy::undocumented_unsafe_blocks)]
 
-use std::cell::Cell;
-use std::cell::RefCell;
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fmt;
 use std::fs;
 use std::io;
-use std::path::PathBuf;
+use std::path::Path;
 use std::ptr;
-use std::rc::Rc;
 use std::result;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 pub mod error;
 use error::Error;
@@ -53,7 +45,7 @@ mod proc_macro;
 /// A struct representing a file of source code.
 ///
 /// This type is the input to [`parse_source`].
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct SourceFile {
     name: String,
     path: Option<String>,
@@ -62,16 +54,16 @@ pub struct SourceFile {
 
 impl SourceFile {
     /// Reads the file at the given path into a `SourceFile`.
-    pub fn read(path: PathBuf) -> io::Result<SourceFile> {
+    ///
+    /// ## Errors
+    /// This function returns an error if the given path is not readable.
+    pub fn read(path: &Path) -> io::Result<SourceFile> {
         let name = path
             .file_name()
-            .ok_or(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "invalid filename",
-            ))?
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid filename"))?
             .to_string_lossy()
             .into_owned();
-        let contents = fs::read_to_string(&path)?;
+        let contents = fs::read_to_string(path)?;
         Ok(SourceFile {
             name,
             path: Some(path.to_string_lossy().into_owned()),
@@ -80,7 +72,7 @@ impl SourceFile {
     }
 
     /// Creates a new `SourceFile` with the given name and contents.
-    pub fn new(name: String, contents: String) -> SourceFile {
+    pub const fn new(name: String, contents: String) -> SourceFile {
         SourceFile {
             name,
             path: None,
@@ -98,7 +90,7 @@ impl fmt::Debug for SourceFile {
         f.debug_struct("SourceFile")
             .field("name", &self.name)
             .field("path", &self.path)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -108,15 +100,15 @@ impl fmt::Debug for SourceFile {
 /// the file containing it.
 ///
 /// [`proc_macro::Span`]: https://doc.rust-lang.org/stable/proc_macro/struct.Span.html
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Span {
     start: usize,
     end: usize,
-    source: Rc<SourceFile>,
+    source: Arc<SourceFile>,
 }
 
 impl Span {
-    fn new(start: usize, end: usize, source: Rc<SourceFile>) -> Span {
+    const fn new(start: usize, end: usize, source: Arc<SourceFile>) -> Span {
         Span { start, end, source }
     }
 
@@ -133,12 +125,12 @@ impl Span {
         Span {
             start: start.start,
             end: end.end,
-            source: Rc::clone(&start.source),
+            source: Arc::clone(&start.source),
         }
     }
 
     #[doc(hidden)]
-    pub fn source(&self) -> &Rc<SourceFile> {
+    pub const fn source(&self) -> &Arc<SourceFile> {
         &self.source
     }
 
@@ -157,7 +149,7 @@ impl Span {
     }
 
     /// Returns true if the span was created with `Span::new_empty()`.
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.start == self.end
     }
 }
@@ -165,7 +157,17 @@ impl Span {
 /// Parsing interface for types with a default parsing method.
 pub trait Parse: Sized {
     /// Parses the input into this type.
-    fn parse(input: ParseStream<'_>) -> Result<Self>;
+    ///
+    /// ## Errors
+    /// This function returns an error if `source` doesn't contain a valid instance
+    /// of `T`.
+    fn parse(input: ParseStream) -> Result<Self>;
+}
+
+impl<T: Parse> Parse for Box<T> {
+    fn parse(input: ParseStream) -> Result<Self> {
+        Ok(Box::new(T::parse(input)?))
+    }
 }
 
 /// A parser that can parse a stream of tokens into a syntax tree node.
@@ -173,26 +175,33 @@ pub trait Parser: Sized {
     /// The return type of this parser.
     type Output;
 
-    /// Parses a tokenstream into the relevant syntax tree node.
+    /// Parses a [`TokenStream`] into the relevant syntax tree node.
+    ///
+    /// ## Errors
+    /// This function returns an error if `source` doesn't contain a valid
+    /// instance of `T`.
     fn parse(self, tokens: TokenStream) -> Result<Self::Output>;
 }
 
-impl<F: FnOnce(ParseStream<'_>) -> Result<T>, T> Parser for F {
+impl<F: FnOnce(ParseStream) -> Result<T>, T> Parser for F {
     type Output = T;
 
     fn parse(self, tokens: TokenStream) -> Result<Self::Output> {
         let cursor = Cursor {
-            stream: tokens.tokens.as_slice(),
-            offset: Cell::new(0),
+            stream: Cow::Borrowed(tokens.tokens.as_slice()),
+            offset: AtomicUsize::new(0),
             last: tokens.tokens.len() - 1,
         };
-        self(&ParseBuffer::new(cursor, Rc::clone(&tokens.source)))
+        self(&ParseBuffer::new(cursor, Arc::clone(&tokens.source)))
     }
 }
 
 /// Parses the given tokens into the syntax tree node `T`.
 ///
 /// This function ignores all whitespace.
+///
+/// ## Errors
+/// Forwards any error from `T::parse`.
 pub fn parse<T: Parse>(mut tokens: TokenStream) -> Result<T> {
     tokens.remove_whitespace();
     Parser::parse(T::parse, tokens)
@@ -201,21 +210,31 @@ pub fn parse<T: Parse>(mut tokens: TokenStream) -> Result<T> {
 /// Scans and parses the given source file into the syntax tree node `T`.
 ///
 /// This function ignores all whitespace.
-pub fn parse_source<T: Parse>(source: Rc<SourceFile>) -> Result<T> {
+///
+/// ## Errors
+/// Forwards any errors from `T::parse`.
+pub fn parse_source<T: Parse>(source: Arc<SourceFile>) -> Result<T> {
     let (tokens, error) = scanner::scan(source, 0, None);
-    parse(tokens).map_err(|mut err| {
-        if let Some(error) = error {
-            err.add(error);
+    match parse(tokens) {
+        Ok(value) => error.map_or(Ok(value), Err),
+        Err(err) => {
+            if let Some(error) = error {
+                Err(error.with(err))
+            } else {
+                Err(err)
+            }
         }
-        err
-    })
+    }
 }
 
 /// Scans and parses the given string into the syntax tree node `T`.
 ///
 /// This function ignores all whitespace.
+///
+/// ## Errors
+/// Forwards any error from `T::parse`.
 pub fn parse_string<T: Parse>(source: String) -> Result<T> {
-    let source = Rc::new(SourceFile {
+    let source = Arc::new(SourceFile {
         name: "str".to_string(),
         path: None,
         contents: source,
@@ -226,7 +245,12 @@ pub fn parse_string<T: Parse>(source: String) -> Result<T> {
 /// Attempts to repeatedly parse `input` into the given syntax tree node,
 /// using `T`'s default parsing implementation, and continuing until `input` is
 /// exhausted.
-pub fn parse_repeated<T: Parse>(input: ParseStream<'_>) -> Result<Vec<T>> {
+///
+/// Note that this function doesn't perform any error recovery.
+///
+/// ## Errors
+/// Forwards any errors from `T::parse`.
+pub fn parse_repeated<T: Parse>(input: ParseStream) -> Result<Vec<T>> {
     let mut items = vec![];
 
     while !input.is_empty() {
@@ -238,13 +262,23 @@ pub fn parse_repeated<T: Parse>(input: ParseStream<'_>) -> Result<Vec<T>> {
 
 /// Gets the `Ok` value, panicking with a formatted error message if the value
 /// is `Err`.
+///
 /// ## Panics
 /// Panics if the contained value is `Err`.
 #[cfg(feature = "ariadne")]
 pub fn pretty_unwrap<T>(result: Result<T>) -> T {
     result.unwrap_or_else(|err| {
-        err.eprint().unwrap();
-        panic!("failed due to above errors");
+        let mut buf = vec![];
+        for report in err.to_reports() {
+            report.write(&mut buf).unwrap();
+        }
+        String::from_utf8(buf).map_or_else(
+            |_| {
+                err.eprint().unwrap();
+                panic!("failed due to above errors");
+            },
+            |s| panic!("{s}"),
+        )
     })
 }
 
@@ -260,11 +294,11 @@ pub fn pretty_unwrap<T>(result: Result<T>) -> T {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TokenStream {
     tokens: Vec<Entry>,
-    source: Rc<SourceFile>,
+    source: Arc<SourceFile>,
 }
 
 impl TokenStream {
-    fn new(tokens: Vec<Entry>, source: Rc<SourceFile>) -> TokenStream {
+    fn new(tokens: Vec<Entry>, source: Arc<SourceFile>) -> TokenStream {
         TokenStream { tokens, source }
     }
 
@@ -337,16 +371,12 @@ impl TokenStream {
     }
 }
 
-impl TryFrom<Rc<SourceFile>> for TokenStream {
+impl TryFrom<Arc<SourceFile>> for TokenStream {
     type Error = Error;
 
-    fn try_from(value: Rc<SourceFile>) -> Result<Self> {
+    fn try_from(value: Arc<SourceFile>) -> Result<Self> {
         let (tokens, error) = scanner::scan(value, 0, None);
-        if let Some(error) = error {
-            Err(error)
-        } else {
-            Ok(tokens)
-        }
+        error.map_or(Ok(tokens), Err)
     }
 }
 
@@ -357,7 +387,7 @@ impl TryFrom<Rc<SourceFile>> for TokenStream {
 pub fn new_error<L: Into<Span>>(message: String, location: L, code: u16) -> Error {
     let span = location.into();
     Error::new(
-        Rc::clone(&span.source),
+        Arc::clone(&span.source),
         ErrorKind::Custom {
             message,
             span,
@@ -369,29 +399,26 @@ pub fn new_error<L: Into<Span>>(message: String, location: L, code: u16) -> Erro
 /// A cursor position within a token stream.
 pub struct ParseBuffer<'a> {
     cursor: Cursor<'a>,
-    source: Rc<SourceFile>,
-    error: RefCell<Error>,
+    source: Arc<SourceFile>,
+    error: Mutex<Error>,
 }
 
 impl<'a> ParseBuffer<'a> {
-    fn new(cursor: Cursor<'a>, source: Rc<SourceFile>) -> ParseBuffer<'a> {
+    fn new(cursor: Cursor<'a>, source: Arc<SourceFile>) -> ParseBuffer<'a> {
         ParseBuffer {
             cursor,
             source,
-            error: RefCell::new(Error::empty()),
+            error: Mutex::new(Error::empty()),
         }
     }
 
     /// Attempts to parse `self` into the given syntax tree node, using `T`'s
     /// default parsing implementation.
+    ///
+    /// ## Errors
+    /// Returns an error if `T`'s `Parse` implementation fails.
     pub fn parse<T: Parse>(&self) -> Result<T> {
         T::parse(self)
-    }
-
-    /// Attempts to parse `self` into the given syntax tree node, using
-    /// `function`.
-    pub fn parse_with<T, F: FnOnce(ParseStream<'_>) -> Result<T>>(&self, function: F) -> Result<T> {
-        function(self)
     }
 
     /// Returns true if this stream has been exhausted.
@@ -403,7 +430,7 @@ impl<'a> ParseBuffer<'a> {
     /// code.
     pub fn new_error<T: Into<Span>>(&self, message: String, location: T, code: u16) -> Error {
         Error::new(
-            Rc::clone(&self.source),
+            Arc::clone(&self.source),
             ErrorKind::Custom {
                 message,
                 span: location.into(),
@@ -413,17 +440,20 @@ impl<'a> ParseBuffer<'a> {
     }
 
     /// Adds a new error to this buffer's storage.
+    #[allow(clippy::missing_panics_doc)] // Will not panic.
     pub fn add_error(&self, error: Error) {
-        self.error.borrow_mut().add(error);
+        self.error.lock().unwrap().add(error);
     }
 
     /// Returns an error consisting of all errors from
     /// [`ParseBuffer::add_error`], if it has been called.
+    #[allow(clippy::missing_panics_doc)] // Will not panic.
     pub fn get_error(&self) -> Option<Error> {
-        if self.error.borrow().is_empty() {
+        let error = self.error.lock().unwrap();
+        if error.is_empty() {
             None
         } else {
-            Some(self.error.borrow().to_owned())
+            Some(error.to_owned())
         }
     }
 
@@ -437,18 +467,21 @@ impl<'a> ParseBuffer<'a> {
     }
 
     fn try_parse<T: Parse>(&self) -> Result<T> {
-        let offset = self.cursor.offset.get();
+        let offset = self.cursor.offset.load(Ordering::SeqCst);
         T::parse(self).map_err(move |err| {
-            self.cursor.offset.set(offset);
+            self.cursor.offset.store(offset, Ordering::SeqCst);
             err
         })
     }
 
     /// Parses `T1` and `T2`, with no whitespace allowed between them.
+    ///
+    /// ## Errors
+    /// Returns an error if `self` does not start with the required tokens.
     pub fn parse_joint<T1: Token, T2: Token>(&self) -> Result<(T1, T2)> {
         if self.current()?.span().end < self.next()?.span().start {
             return Err(Error::new(
-                Rc::clone(&self.source),
+                Arc::clone(&self.source),
                 ErrorKind::UnexpectedToken {
                     expected: HashSet::from_iter([T1::display() + &T2::display()]),
                     span: self.current()?.span().to_owned(),
@@ -465,6 +498,9 @@ impl<'a> ParseBuffer<'a> {
     ///
     /// To parse separated instances of `T`, see
     /// [Punctuated][punctuated::Punctuated].
+    ///
+    /// ## Errors
+    /// Returns an error if `self` is not a valid sequence of `T`.
     pub fn parse_repeated<T: Parse>(&self) -> Result<Vec<T>> {
         let mut items = vec![];
 
@@ -476,6 +512,7 @@ impl<'a> ParseBuffer<'a> {
     }
 
     /// Returns true if the next token is an instance of `T`.
+    #[allow(clippy::needless_pass_by_value)]
     pub fn peek<T: Peek>(&self, token: T) -> bool {
         let _ = token;
         self.parse_undo::<T::Token>().is_ok()
@@ -493,44 +530,44 @@ impl<'a> ParseBuffer<'a> {
     }
 
     fn parse_undo<T: Parse>(&self) -> Result<T> {
-        let offset = self.cursor.offset.get();
+        let offset = self.cursor.offset.load(Ordering::SeqCst);
         let val = T::parse(self);
-        self.cursor.offset.set(offset);
+        self.cursor.offset.store(offset, Ordering::SeqCst);
         val
     }
 
     fn report_error_tokens(&self) -> Result<()> {
         let mut error = false;
         while let (Entry::Error(_), offset) = self.cursor.next() {
-            self.cursor.offset.set(offset);
+            self.cursor.offset.store(offset, Ordering::SeqCst);
             error = true;
         }
         if error {
-            Err(Error::new(Rc::clone(&self.source), ErrorKind::Silent))
+            Err(Error::new(Arc::clone(&self.source), ErrorKind::Silent))
         } else {
             Ok(())
         }
     }
 
-    fn next(&self) -> Result<&'a Entry> {
+    fn next(&'a self) -> Result<&'a Entry> {
         self.report_error_tokens()?;
         if self.cursor.eof() {
             Err(Error::new(
-                Rc::clone(&self.source),
+                Arc::clone(&self.source),
                 ErrorKind::EndOfFile(self.source.contents.len()),
             ))
         } else {
             let (token, offset) = self.cursor.next();
-            self.cursor.offset.set(offset);
+            self.cursor.offset.store(offset, Ordering::SeqCst);
             Ok(token)
         }
     }
 
-    fn current(&self) -> Result<&'a Entry> {
+    fn current(&'a self) -> Result<&'a Entry> {
         self.report_error_tokens()?;
         if self.cursor.eof() {
             Err(Error::new(
-                Rc::clone(&self.source),
+                Arc::clone(&self.source),
                 ErrorKind::EndOfFile(self.source.contents.len()),
             ))
         } else {
@@ -538,14 +575,17 @@ impl<'a> ParseBuffer<'a> {
         }
     }
 
-    /// Gets the span of the current token, unless `self` is empty.
+    /// Gets the span of the current token.
+    ///
+    /// ## Errors
+    /// Returns an error if `self` is empty.
     pub fn current_span(&self) -> Result<Span> {
         Ok(self.current()?.span().to_owned())
     }
 
-    fn get_relative(&self, offset: isize) -> Result<&'a Entry> {
+    fn get_relative(&'a self, offset: isize) -> Result<&'a Entry> {
         self.cursor.get_relative(offset).ok_or(Error::new(
-            Rc::clone(&self.source),
+            Arc::clone(&self.source),
             ErrorKind::EndOfFile(self.source.contents.len()),
         ))
     }
@@ -553,8 +593,9 @@ impl<'a> ParseBuffer<'a> {
     /// Creates a new `ParseBuffer` at the same position as `self`.
     ///
     /// Changes to `self` will not affect the fork, and vice versa.
+    #[must_use]
     pub fn fork(&self) -> ParseBuffer<'a> {
-        ParseBuffer::new(self.cursor.clone(), Rc::clone(&self.source))
+        ParseBuffer::new(self.cursor.clone(), Arc::clone(&self.source))
     }
 
     /// Commits a forked buffer into `self`, updating `self` to reflect `fork`.
@@ -563,12 +604,16 @@ impl<'a> ParseBuffer<'a> {
     /// This function will panic if `fork` wasn't forked from `self` or if
     /// `self` is further ahead than `fork`.
     pub fn commit(&self, fork: &Self) {
-        if !ptr::eq(self.cursor.stream, fork.cursor.stream) {
+        if !ptr::eq(self.cursor.stream.as_ptr(), fork.cursor.stream.as_ptr()) {
             panic!("cannot commit ParseBuffer that wasn't forked from this buffer");
-        } else if fork.cursor.offset.get() < self.cursor.offset.get() {
+        } else if fork.cursor.offset.load(Ordering::SeqCst)
+            < self.cursor.offset.load(Ordering::SeqCst)
+        {
             panic!("cannot commit original ParseBuffer into fork");
         }
-        self.cursor.offset.set(fork.cursor.offset.get());
+        self.cursor
+            .offset
+            .store(fork.cursor.offset.load(Ordering::SeqCst), Ordering::SeqCst);
     }
 
     /// Creates an error with the message `Unexpected token` and the given
@@ -582,7 +627,7 @@ impl<'a> ParseBuffer<'a> {
             Err(err) => return err,
         };
         Error::new(
-            Rc::clone(&self.source),
+            Arc::clone(&self.source),
             ErrorKind::UnexpectedToken {
                 expected,
                 span: current.span().clone(),
@@ -602,9 +647,8 @@ impl<'a> ParseBuffer<'a> {
         while let (Entry::WhiteSpace(whitespace), offset) = self.cursor.next() {
             if matches!(whitespace, WhiteSpace::NewLine(_)) {
                 break;
-            } else {
-                self.cursor.offset.set(offset);
             }
+            self.cursor.offset.store(offset, Ordering::SeqCst);
         }
     }
 
@@ -613,7 +657,7 @@ impl<'a> ParseBuffer<'a> {
         Span {
             start: 0,
             end: 0,
-            source: Rc::clone(&self.source),
+            source: Arc::clone(&self.source),
         }
     }
 }
@@ -621,17 +665,32 @@ impl<'a> ParseBuffer<'a> {
 impl fmt::Debug for ParseBuffer<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ParseBuffer")
-            .field("tokens", &self.cursor.stream)
+            .field(
+                "tokens",
+                &&self.cursor.stream[self.cursor.offset.load(Ordering::SeqCst)..],
+            )
             .field("source", &self.source)
             .field("error", &self.error)
             .finish()
     }
 }
 
+impl<'a> From<TokenStream> for ParseBuffer<'a> {
+    fn from(value: TokenStream) -> Self {
+        let last = value.tokens.len() - 1;
+        let cursor = Cursor {
+            stream: Cow::Owned(value.tokens),
+            offset: AtomicUsize::new(0),
+            last,
+        };
+        ParseBuffer::new(cursor, value.source)
+    }
+}
+
 /// Returns true if [`ParseBuffer::peek`] would return true for any types
 /// passed.
 ///
-/// Accepts a ParseStream followed by one or more types.
+/// Accepts a `ParseStream` followed by one or more types.
 #[macro_export]
 macro_rules! peek_any {
     ( $input:expr, $( $ty:tt ),+ ) => {
@@ -642,7 +701,7 @@ macro_rules! peek_any {
 /// Returns true if [`ParseBuffer::peek2`] would return true for any types
 /// passed.
 ///
-/// Accepts a ParseStream followed by one or more types.
+/// Accepts a `ParseStream` followed by one or more types.
 #[macro_export]
 macro_rules! peek2_any {
     ( $input:expr, $( $ty:tt ),+ ) => {
@@ -650,20 +709,19 @@ macro_rules! peek2_any {
     };
 }
 
-/// The input type for all parsing functions. This is a stable alias for
-/// [`ParseBuffer`].
+/// The input type for all parsing functions.
 pub type ParseStream<'a> = &'a ParseBuffer<'a>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct Cursor<'a> {
-    stream: &'a [Entry],
-    offset: Cell<usize>,
+    stream: Cow<'a, [Entry]>,
+    offset: AtomicUsize,
     last: usize,
 }
 
 impl<'a> Cursor<'a> {
     fn bump(&self) -> usize {
-        let offset = self.offset.get();
+        let offset = self.offset.load(Ordering::SeqCst);
         if offset == self.last {
             offset
         } else {
@@ -671,23 +729,38 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    fn current(&self) -> &'a Entry {
-        &self.stream[self.offset.get()]
+    fn current(&'a self) -> &'a Entry {
+        &self.stream[self.offset.load(Ordering::SeqCst)]
     }
 
     pub fn eof(&self) -> bool {
-        self.offset.get() == self.last
+        self.offset.load(Ordering::SeqCst) == self.last
     }
 
-    fn next(&self) -> (&'a Entry, usize) {
+    fn next(&'a self) -> (&'a Entry, usize) {
         let token_tree = self.current();
         let offset = self.bump();
         (token_tree, offset)
     }
 
-    fn get_relative(&self, offset: isize) -> Option<&'a Entry> {
-        self.stream
-            .get((self.offset.get() as isize + offset) as usize)
+    fn get_relative(&'a self, offset: isize) -> Option<&'a Entry> {
+        let current_offset = self.offset.load(Ordering::SeqCst);
+        let index = if offset < 0 {
+            current_offset - offset.unsigned_abs()
+        } else {
+            current_offset + offset.unsigned_abs()
+        };
+        self.stream.get(index)
+    }
+}
+
+impl<'a> Clone for Cursor<'a> {
+    fn clone(&self) -> Self {
+        Cursor {
+            stream: self.stream.clone(),
+            offset: AtomicUsize::new(self.offset.load(Ordering::SeqCst)),
+            last: self.last,
+        }
     }
 }
 
@@ -741,6 +814,8 @@ pub type Result<T> = result::Result<T, Error>;
 #[doc(hidden)]
 pub mod private {
     pub trait Sealed {}
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     pub enum Marker {}
 }
 

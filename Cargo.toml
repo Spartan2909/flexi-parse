@@ -14,6 +14,7 @@ repository = "https://github.com/Spartan2909/flexi-parse"
 ariadne = { version = "0.3", optional = true }
 concat-idents = "1"
 proc-macro2 = { version = "1.0", optional = true }
+strum = { version = "0.25", features = ["derive"] }
 
 [features]
 default = ["ariadne"]
@@ -29,3 +30,20 @@ test = true
 all-features = true
 targets = ["x86_64-unknown-linux-gnu"]
 rustdoc-args = ["--cfg", "doc_cfg", "--generate-link-to-definition"]
+
+[lints.rust]
+missing_docs = "warn"
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+
+cast_possible_truncation = "allow"
+implicit_hasher = "allow"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+redundant_pub_crate = "allow"
+significant_drop_in_scrutinee = "allow"
+too_many_lines = "allow"
+use_self = "allow"

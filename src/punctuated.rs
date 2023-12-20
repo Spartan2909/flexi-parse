@@ -16,7 +16,7 @@ pub struct Punctuated<T, P: Punct> {
 }
 
 impl<T, P: Punct> Punctuated<T, P> {
-    fn new() -> Punctuated<T, P> {
+    const fn new() -> Punctuated<T, P> {
         Punctuated {
             pairs: vec![],
             end: None,
@@ -37,6 +37,9 @@ impl<T, P: Punct> Punctuated<T, P> {
     ///
     /// Note that this will stop as soon as it encounters a token that doesn't
     /// fit this pattern.
+    ///
+    /// ## Errors
+    /// Forwards any errors from `T::parse`.
     pub fn parse_separated(input: ParseStream<'_>) -> Result<Self>
     where
         T: Parse,
@@ -49,6 +52,9 @@ impl<T, P: Punct> Punctuated<T, P> {
     ///
     /// Note that this will stop as soon as it encounters a token that doesn't
     /// fit this pattern.
+    ///
+    /// ## Errors
+    /// Forwards any errors from `f`.
     pub fn parse_separated_with<F: FnMut(ParseStream<'_>) -> Result<T>>(
         input: ParseStream<'_>,
         mut f: F,
@@ -69,6 +75,9 @@ impl<T, P: Punct> Punctuated<T, P> {
     ///
     /// Note that this will stop as soon as it encounters a token that doesn't
     /// fit this pattern.
+    ///
+    /// ## Errors
+    /// Forwards any errors from `T::parse`.
     pub fn parse_separated_trailing(input: ParseStream<'_>) -> Result<Self>
     where
         T: Parse,
@@ -81,6 +90,9 @@ impl<T, P: Punct> Punctuated<T, P> {
     ///
     /// Note that this will stop as soon as it encounters a token that doesn't
     /// fit this pattern.
+    ///
+    /// ## Errors
+    /// Forwards any errors from `f`.
     pub fn parse_separated_trailing_with<F: FnMut(ParseStream<'_>) -> Result<T>>(
         input: ParseStream<'_>,
         mut f: F,
@@ -104,7 +116,10 @@ impl<T, P: Punct> Punctuated<T, P> {
     /// Parses instances of `T` separated by instances of `P`, with trailing
     /// punctuation.
     ///
-    /// Note that this attempts to consume the entire stream.
+    /// Note that this function attempts to consume the entire stream.
+    ///
+    /// ## Errors
+    /// Forwards any errors from `T::parse`.
     pub fn parse_terminated(input: ParseStream<'_>) -> Result<Self>
     where
         T: Parse,
@@ -115,7 +130,10 @@ impl<T, P: Punct> Punctuated<T, P> {
     // Parses instances of `T` using `f`, separated by instances of `P`, with
     /// trailing punctuation.
     ///
-    /// Note that this attempts to consume the entire stream.
+    /// Note that this function attempts to consume the entire stream.
+    ///
+    /// ## Errors
+    /// Forwards any errors from `f`.
     pub fn parse_terminated_with<F: FnMut(ParseStream<'_>) -> Result<T>>(
         input: ParseStream<'_>,
         mut f: F,
@@ -305,8 +323,7 @@ impl<T, P> Pair<T, P> {
     /// Converts the pair into the inner value.
     pub fn into_value(self) -> T {
         match self {
-            Pair::Punctuated(value, _) => value,
-            Pair::End(value) => value,
+            Pair::Punctuated(value, _) | Pair::End(value) => value,
         }
     }
 }

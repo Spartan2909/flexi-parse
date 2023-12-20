@@ -60,7 +60,6 @@
 //! # }
 //! ```
 
-use crate::scanner;
 use crate::token::DoubleQuote;
 use crate::token::LAngle;
 use crate::token::LeftBrace;
@@ -73,6 +72,7 @@ use crate::token::RightBracket;
 use crate::token::RightParen;
 use crate::token::SingleQuote;
 use crate::token::Token;
+use crate::Entry;
 use crate::Parse;
 use crate::ParseStream;
 use crate::Result;
@@ -80,7 +80,7 @@ use crate::Span;
 use crate::TokenStream;
 
 use std::marker::PhantomData;
-use std::rc::Rc;
+use std::sync::Arc;
 
 /// A trait for types that represent the delimiters of a group.
 ///
@@ -262,10 +262,11 @@ impl Delimiters for DoubleQuotes {
     }
 }
 
-pub(crate) fn delimited_string<D: Delimiters>(
+pub(crate) fn parse_delimiters<D: Delimiters>(
     input: ParseStream<'_>,
-) -> Result<(D::Start, D::End)> {
+) -> Result<(D::Start, D::End, TokenStream)> {
     let start: D::Start = input.parse()?;
+    let mut tokens = vec![];
     if D::CAN_NEST {
         let mut open = 1;
         loop {
@@ -273,26 +274,29 @@ pub(crate) fn delimited_string<D: Delimiters>(
                 open -= 1;
                 if open == 0 {
                     break;
-                } else {
-                    input.next()?;
                 }
+                tokens.push(input.next()?.clone());
             } else if D::Start::peek(input) {
                 open += 1;
-                input.next()?;
+                tokens.push(input.next()?.clone());
             } else {
-                input.next()?;
+                tokens.push(input.next()?.clone());
             }
         }
     } else {
         while !D::End::peek(input) {
-            input.next()?;
+            tokens.push(input.next()?.clone());
         }
     }
     let end: D::End = input.parse().map_err(|mut err| {
-        err.eof_to_group(start.span().clone(), D::Start::display());
+        err.eof_to_group(start.span(), &D::Start::display());
         err
     })?;
-    Ok((start, end))
+    Ok((
+        start,
+        end,
+        TokenStream::new(tokens, Arc::clone(&input.source)),
+    ))
 }
 
 /// A delimited group.
@@ -301,7 +305,7 @@ pub(crate) fn delimited_string<D: Delimiters>(
 ///
 /// [module]: (crate::group).
 #[derive(Debug, Clone)]
-pub struct Group<D: Delimiters> {
+pub struct Group<D> {
     pub(crate) token_stream: TokenStream,
     pub(crate) span: Span,
     _marker: PhantomData<D>,
@@ -325,6 +329,7 @@ impl<D: Delimiters> Group<D> {
 
     /// Consumes `self`, returning a new [`Group<D>`] with all whitespace
     /// removed.
+    #[must_use]
     pub fn without_whitespace(mut self) -> Group<D> {
         self.remove_whitespace();
         self
@@ -333,10 +338,9 @@ impl<D: Delimiters> Group<D> {
 
 impl<D: Delimiters> Parse for Group<D> {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let (start, end) = delimited_string::<D>(input)?;
-        let (start, end) = (start.span(), end.span());
-        let (token_stream, _) = scanner::scan(Rc::clone(&input.source), start.end, Some(end.start));
-        let span = Span::new(start.start, end.end, Rc::clone(&input.source));
+        let (start, end, mut token_stream) = parse_delimiters::<D>(input)?;
+        token_stream.tokens.push(Entry::End);
+        let span = Span::across(start.span(), end.span());
         Ok(Group {
             token_stream,
             span,
@@ -394,24 +398,23 @@ impl<D: Delimiters> Parse for Group<D> {
 ///         let content;
 ///         Ok(Block {
 ///             braces: group!(content in input),
-///             statements: parse_repeated.parse(content)?,
+///             statements: parse_repeated(&content)?,
 ///         })
 ///     }
 /// }
+///
 /// # fn main () {
 /// let ast: Statement = parse_string("{
 ///     3; 5;
 /// }".to_string()).unwrap();
-///
 /// # }
-///
 /// ```
 #[macro_export]
 macro_rules! group {
     ($tokens:ident in $input:expr) => {{
-        let _tmp = $crate::group::Group::without_whitespace($input.parse()?);
+        let _tmp: $crate::group::Group<_> = $input.parse()?;
         let _delims = _tmp.delimiters();
-        $tokens = _tmp.into_token_stream();
+        $tokens = $crate::ParseBuffer::from(_tmp.into_token_stream());
         _delims
     }};
 }
