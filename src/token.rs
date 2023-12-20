@@ -1343,73 +1343,9 @@ pub const fn CarriageReturn(marker: Marker) -> CarriageReturn {
 /// ```
 #[macro_export]
 macro_rules! keywords {
-    [ $( $kw:ident ),+ $(,)? ] => {
-        use $crate::token::Token as _;
+    [ $( $kw:ident $(as $name:ident)? ),+ $(,)? ] => {
         $(
-            #[derive(Debug, Clone)]
-            #[allow(non_camel_case_types)]
-            pub struct $kw {
-                ident: $crate::token::Ident
-            }
-
-            impl $kw {
-                #[allow(dead_code)]
-                pub fn new(input: $crate::ParseStream) -> Self {
-                    Self {
-                        ident: $crate::token::Ident::new(stringify!($kw).to_string(), input.empty_span()),
-                    }
-                }
-
-                #[allow(dead_code)]
-                pub const fn ident(&self) -> &$crate::token::Ident {
-                    &self.ident
-                }
-            }
-
-            impl $crate::Parse for $kw {
-                fn parse(input: $crate::ParseStream) -> $crate::Result<Self> {
-                    let ident: $crate::token::Ident = input.parse()?;
-                    if ident.string() == stringify!($kw) {
-                        $crate::Result::Ok(Self {
-                            ident: ident
-                        })
-                    } else {
-                        $crate::Result::Err(input.unexpected_token(
-                            ::std::collections::HashSet::from_iter([stringify!($kw).to_string()]),
-                        ))
-                    }
-                }
-            }
-
-            impl $crate::private::Sealed for $kw {}
-
-            impl $crate::token::Token for $kw {
-                fn span(&self) -> &$crate::Span {
-                    self.ident.span()
-                }
-
-                fn set_span(&mut self, span: $crate::Span) {
-                    self.ident.set_span(span);
-                }
-
-                fn display() -> String {
-                    stringify!($kw).to_string()
-                }
-            }
-
-            impl ::std::cmp::PartialEq for $kw {
-                fn eq(&self, _other: &Self) -> bool {
-                    true
-                }
-            }
-
-            impl ::std::cmp::Eq for $kw {}
-
-            #[doc(hidden)]
-            #[allow(dead_code)]
-            pub const fn $kw(marker: $crate::private::Marker) -> $kw {
-                match marker {}
-            }
+            $crate::keywords!(@ $kw $(as $name)?);
         )+
 
         /// Parses non-keyword identifiers.
@@ -1425,104 +1361,73 @@ macro_rules! keywords {
             }
         }
     };
-}
+    (@ $kw:ident) => {
+        $crate::keywords!(@ $kw as $kw);
+    };
+    (@ $kw:ident as $name:ident) => {
+        #[derive(Debug, Clone)]
+        #[allow(non_camel_case_types)]
+        pub struct $name {
+            ident: $crate::token::Ident
+        }
 
-/// Generate types for keywords, with the type names prefixed with `keyword_`.
-///
-/// ## Usage
-/// ```
-/// use flexi_parse::parse_string;
-/// mod kw {
-///     use flexi_parse::keywords_prefixed;
-///     keywords_prefixed!["let", "if"];
-/// }
-///
-/// # fn main() {
-/// let kw1: kw::keyword_let = parse_string("let".to_string()).unwrap();
-/// let kw2: kw::keyword_if = parse_string("if".to_string()).unwrap();
-/// # }
-/// ```
-#[macro_export]
-macro_rules! keywords_prefixed {
-    [ $( $kw:tt ),+ $(,)? ] => {
-        $(
-            $crate::token::concat_idents!(struct_name = keyword_, $kw {
-                #[derive(Debug, Clone)]
-                #[allow(non_camel_case_types)]
-                pub struct struct_name {
-                    ident: $crate::token::Ident
+        impl $name {
+            #[allow(dead_code)]
+            pub fn new(input: $crate::ParseStream) -> Self {
+                Self {
+                    ident: $crate::token::Ident::new(stringify!($kw).to_string(), input.empty_span()),
                 }
-
-                impl struct_name {
-                    #[allow(dead_code)]
-                    pub fn new(input: $crate::ParseStream) -> Self {
-                        Self {
-                            ident: $crate::token::Ident::new($kw.to_string(), input.empty_span()),
-                        }
-                    }
-
-                    #[allow(dead_code)]
-                    pub const fn ident(&self) -> &$crate::token::Ident {
-                        &self.ident
-                    }
-                }
-
-                impl $crate::Parse for struct_name {
-                    fn parse(input: $crate::ParseStream) -> $crate::Result<Self> {
-                        let ident: $crate::token::Ident = input.parse()?;
-                        if ident.string() == $kw {
-                            $crate::Result::Ok(Self {
-                                ident,
-                            })
-                        } else {
-                            $crate::Result::Err(input.unexpected_token(
-                                ::std::collections::HashSet::from_iter([$kw.to_string()]),
-                            ))
-                        }
-                    }
-                }
-
-                impl $crate::private::Sealed for struct_name {}
-
-                impl $crate::token::Token for struct_name {
-                    fn span(&self) -> &$crate::Span {
-                        self.ident.span()
-                    }
-
-                    fn set_span(&mut self, span: $crate::Span) {
-                        self.ident.set_span(span);
-                    }
-
-                    fn display() -> String {
-                        $kw.to_string()
-                    }
-                }
-
-                impl ::std::cmp::PartialEq for struct_name {
-                    fn eq(&self, _other: &Self) -> bool {
-                        true
-                    }
-                }
-
-                #[doc(hidden)]
-                #[allow(dead_code)]
-                pub const fn struct_name(marker: $crate::private::Marker) -> struct_name {
-                    match marker {}
-                }
-            });
-        )+
-
-        /// Parses non-keyword identifiers.
-        #[allow(dead_code)]
-        pub fn ident(input: $crate::ParseStream) -> $crate::Result<$crate::token::Ident> {
-            let ident: $crate::token::Ident = input.parse()?;
-            if [$( $kw ),+].contains(&ident.string().as_str()) {
-                $crate::Result::Err(input.unexpected_token(
-                    ::std::collections::HashSet::from_iter(["an identifier".to_string()]),
-                ))
-            } else {
-                $crate::Result::Ok(ident)
             }
+
+            #[allow(dead_code)]
+            pub const fn ident(&self) -> &$crate::token::Ident {
+                &self.ident
+            }
+        }
+
+        impl $crate::Parse for $name {
+            fn parse(input: $crate::ParseStream) -> $crate::Result<Self> {
+                let ident: $crate::token::Ident = input.parse()?;
+                if ident.string() == stringify!($kw) {
+                    $crate::Result::Ok(Self {
+                        ident: ident
+                    })
+                } else {
+                    $crate::Result::Err(input.unexpected_token(
+                        ::std::collections::HashSet::from_iter([stringify!($kw).to_string()]),
+                    ))
+                }
+            }
+        }
+
+        impl $crate::private::Sealed for $name {}
+
+        impl $crate::token::Token for $name {
+            fn span(&self) -> &$crate::Span {
+                self.ident.span()
+            }
+
+            fn set_span(&mut self, span: $crate::Span) {
+                self.ident.set_span(span);
+            }
+
+            fn display() -> String {
+                stringify!($name).to_string()
+            }
+        }
+
+        impl ::std::cmp::PartialEq for $name {
+            fn eq(&self, _other: &Self) -> bool {
+                true
+            }
+        }
+
+        impl ::std::cmp::Eq for $name {}
+
+        #[doc(hidden)]
+        #[allow(dead_code)]
+        pub const fn $name(marker: $crate::private::Marker) -> $name {
+            match marker {}
         }
     };
 }

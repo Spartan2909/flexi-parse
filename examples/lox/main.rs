@@ -43,11 +43,9 @@ mod error_codes {
 }
 
 mod kw {
-    use flexi_parse::keywords_prefixed;
-
-    keywords_prefixed![
-        "and", "class", "else", "false", "for", "fun", "if", "nil", "or", "print", "return",
-        "super", "this", "true", "var", "while"
+    flexi_parse::keywords![
+        and, class, else as kw_else, false as kw_false, for as kw_for, fun, if as kw_if, nil, or,
+        print, return as kw_return, super as kw_super, this, true as kw_true, var, while as kw_while,
     ];
 }
 
@@ -102,18 +100,18 @@ impl Binary {
 
 #[derive(Debug, Clone, PartialEq)]
 enum Literal {
-    False(kw::keyword_false),
+    False(kw::kw_false),
     Float(LitFloat),
     Int(LitInt),
-    Nil(kw::keyword_nil),
+    Nil(kw::nil),
     String(LitStr),
-    True(kw::keyword_true),
+    True(kw::kw_true),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 enum Logical {
-    And(Expr, kw::keyword_and, Expr),
-    Or(Expr, kw::keyword_or, Expr),
+    And(Expr, kw::and, Expr),
+    Or(Expr, kw::or, Expr),
 }
 
 impl Logical {
@@ -170,13 +168,13 @@ enum Expr {
         value: Box<Expr>,
     },
     Super {
-        keyword: kw::keyword_super,
+        keyword: kw::kw_super,
         distance: Cell<Option<usize>>,
         dot: Punct!["."],
         method: Ident,
     },
     This {
-        keyword: kw::keyword_this,
+        keyword: kw::this,
         distance: Cell<Option<usize>>,
     },
     Unary(Box<Unary>),
@@ -225,7 +223,7 @@ impl Expr {
     fn or(input: ParseStream) -> Result<Self> {
         let mut expr = Expr::and(input)?;
 
-        while input.peek(kw::keyword_or) {
+        while input.peek(kw::or) {
             expr = Expr::Logical(Box::new(Logical::Or(
                 expr,
                 input.parse()?,
@@ -239,7 +237,7 @@ impl Expr {
     fn and(input: ParseStream) -> Result<Self> {
         let mut expr = Expr::equality(input)?;
 
-        while input.peek(kw::keyword_and) {
+        while input.peek(kw::and) {
             expr = Expr::Logical(Box::new(Logical::And(
                 expr,
                 input.parse()?,
@@ -379,11 +377,11 @@ impl Expr {
 
     fn primary(input: ParseStream) -> Result<Self> {
         let lookahead = input.lookahead();
-        if lookahead.peek(kw::keyword_false) {
+        if lookahead.peek(kw::kw_false) {
             Ok(Expr::Literal(Literal::False(input.parse()?)))
-        } else if lookahead.peek(kw::keyword_true) {
+        } else if lookahead.peek(kw::kw_true) {
             Ok(Expr::Literal(Literal::True(input.parse()?)))
-        } else if lookahead.peek(kw::keyword_nil) {
+        } else if lookahead.peek(kw::nil) {
             Ok(Expr::Literal(Literal::Nil(input.parse()?)))
         } else if lookahead.peek(LitFloat) {
             Ok(Expr::Literal(Literal::Float(input.parse()?)))
@@ -391,14 +389,14 @@ impl Expr {
             Ok(Expr::Literal(Literal::Int(input.parse()?)))
         } else if lookahead.peek(LitStr) {
             Ok(Expr::Literal(Literal::String(input.parse()?)))
-        } else if input.peek(kw::keyword_super) {
+        } else if input.peek(kw::kw_super) {
             Ok(Expr::Super {
                 keyword: input.parse()?,
                 distance: Cell::new(None),
                 dot: input.parse()?,
                 method: input.parse()?,
             })
-        } else if input.peek(kw::keyword_this) {
+        } else if input.peek(kw::this) {
             Ok(Expr::This {
                 keyword: input.parse()?,
                 distance: Cell::new(None),
@@ -477,7 +475,7 @@ enum Stmt {
     },
     Print(Expr),
     Return {
-        keyword: kw::keyword_return,
+        keyword: kw::kw_return,
         value: Option<Expr>,
     },
     Variable {
@@ -502,12 +500,12 @@ fn block(input: ParseStream) -> Result<Vec<Stmt>> {
 
 impl Stmt {
     fn declaration(input: ParseStream) -> Result<Self> {
-        if input.peek(kw::keyword_class) {
+        if input.peek(kw::class) {
             Stmt::class_declaration(input)
-        } else if input.peek(kw::keyword_fun) {
-            let _: kw::keyword_fun = input.parse()?;
+        } else if input.peek(kw::fun) {
+            let _: kw::fun = input.parse()?;
             Ok(Stmt::Function(Function::parse(input)?))
-        } else if input.peek(kw::keyword_var) {
+        } else if input.peek(kw::var) {
             Stmt::var_declaration(input)
         } else {
             Stmt::statement(input)
@@ -515,7 +513,7 @@ impl Stmt {
     }
 
     fn class_declaration(input: ParseStream) -> Result<Self> {
-        let _: kw::keyword_class = input.parse()?;
+        let _: kw::class = input.parse()?;
         let name: Ident = input.parse()?;
 
         let superclass = if input.peek(Punct!["<"]) {
@@ -538,7 +536,7 @@ impl Stmt {
     }
 
     fn var_declaration(input: ParseStream) -> Result<Self> {
-        let _: kw::keyword_var = input.parse()?;
+        let _: kw::var = input.parse()?;
 
         let name = kw::ident(input)?;
 
@@ -554,15 +552,15 @@ impl Stmt {
     }
 
     fn statement(input: ParseStream) -> Result<Self> {
-        if input.peek(kw::keyword_if) {
+        if input.peek(kw::kw_if) {
             Stmt::if_statement(input)
-        } else if input.peek(kw::keyword_for) {
+        } else if input.peek(kw::kw_for) {
             Stmt::for_statement(input)
-        } else if input.peek(kw::keyword_print) {
+        } else if input.peek(kw::print) {
             Stmt::print_statement(input)
-        } else if input.peek(kw::keyword_return) {
+        } else if input.peek(kw::kw_return) {
             Stmt::return_statement(input)
-        } else if input.peek(kw::keyword_while) {
+        } else if input.peek(kw::kw_while) {
             Stmt::while_statement(input)
         } else if input.peek(Punct!["{"]) {
             let content;
@@ -581,14 +579,14 @@ impl Stmt {
                 let initialiser = if content.peek(Punct![";"]) {
                     let _: Punct![";"] = content.parse()?;
                     None
-                } else if content.peek(kw::keyword_var) {
+                } else if content.peek(kw::var) {
                     Some(Stmt::var_declaration(content)?)
                 } else {
                     Some(Stmt::expression_statement(content)?)
                 };
 
                 let condition = if content.peek(Punct![";"]) {
-                    Expr::Literal(Literal::True(kw::keyword_true::new(content)))
+                    Expr::Literal(Literal::True(kw::kw_true::new(content)))
                 } else {
                     Expr::parse(content)?
                 };
@@ -604,7 +602,7 @@ impl Stmt {
             }
         }
 
-        let _: kw::keyword_for = input.parse()?;
+        let _: kw::kw_for = input.parse()?;
 
         let content;
         let _: Parentheses = group!(content in input);
@@ -612,14 +610,14 @@ impl Stmt {
         let initialiser = if content.peek(Punct![";"]) {
             let _: Punct![";"] = content.parse()?;
             None
-        } else if content.peek(kw::keyword_var) {
+        } else if content.peek(kw::var) {
             Some(Stmt::var_declaration(&content)?)
         } else {
             Some(Stmt::expression_statement(&content)?)
         };
 
         let condition = if content.peek(Punct![";"]) {
-            Expr::Literal(Literal::True(kw::keyword_true::new(&content)))
+            Expr::Literal(Literal::True(kw::kw_true::new(&content)))
         } else {
             content.parse()?
         };
@@ -650,13 +648,13 @@ impl Stmt {
     }
 
     fn if_statement(input: ParseStream) -> Result<Self> {
-        let _: kw::keyword_if = input.parse()?;
+        let _: kw::kw_if = input.parse()?;
         let content;
         let _: Parentheses = group!(content in input);
         let condition = content.parse()?;
 
         let then_branch = Box::new(Stmt::statement(input)?);
-        let else_branch = if input.peek(kw::keyword_else) {
+        let else_branch = if input.peek(kw::kw_else) {
             Some(Box::new(Stmt::statement(input)?))
         } else {
             None
@@ -670,14 +668,14 @@ impl Stmt {
     }
 
     fn print_statement(input: ParseStream) -> Result<Self> {
-        let _: kw::keyword_print = input.parse()?;
+        let _: kw::print = input.parse()?;
         let value = input.parse()?;
         let _: Punct![";"] = input.parse()?;
         Ok(Self::Print(value))
     }
 
     fn return_statement(input: ParseStream) -> Result<Self> {
-        let keyword: kw::keyword_return = input.parse()?;
+        let keyword: kw::kw_return = input.parse()?;
         let value = if input.peek(Punct![";"]) {
             None
         } else {
@@ -688,7 +686,7 @@ impl Stmt {
     }
 
     fn while_statement(input: ParseStream) -> Result<Self> {
-        let _: kw::keyword_while = input.parse()?;
+        let _: kw::kw_while = input.parse()?;
         let content;
         let _: Parentheses = group!(content in input);
         let condition = content.parse()?;
@@ -717,17 +715,7 @@ impl Ast {
         input.synchronise(|input| {
             use kw::*;
             input.peek(Punct![";"]) && !input.peek2(Punct!["}"])
-                || peek2_any!(
-                    input,
-                    keyword_class,
-                    keyword_for,
-                    keyword_fun,
-                    keyword_if,
-                    keyword_print,
-                    keyword_return,
-                    keyword_var,
-                    keyword_while
-                )
+                || peek2_any!(input, class, kw_for, fun, kw_if, print, kw_return, var, kw_while)
         });
     }
 }

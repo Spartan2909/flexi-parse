@@ -4,14 +4,15 @@ use crate::Parser;
 use super::scan;
 
 mod kw {
-    use crate::keywords_prefixed;
+    use crate::keywords;
 
-    keywords_prefixed!["let", "if", "for"];
+    keywords![let as kw_let, aaa];
 }
 
 #[test]
 fn keyword() {
-    parse::<kw::keyword_let>(scan("let")).unwrap();
+    parse::<kw::aaa>(scan("aaa")).unwrap();
+    parse::<kw::kw_let>(scan("let")).unwrap();
 }
 
 #[test]
@@ -21,5 +22,6 @@ fn ident() {
 
 #[test]
 fn ident_fail() {
-    Parser::parse(kw::ident, scan("let")).unwrap_err();
+    kw::ident.parse(scan("aaa")).unwrap_err();
+    kw::ident.parse(scan("let")).unwrap_err();
 }
