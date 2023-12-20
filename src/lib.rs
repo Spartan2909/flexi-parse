@@ -693,7 +693,7 @@ impl<'a> From<TokenStream> for ParseBuffer<'a> {
 /// Accepts a `ParseStream` followed by one or more types.
 #[macro_export]
 macro_rules! peek_any {
-    ( $input:expr, $( $ty:tt ),+ ) => {
+    ( $input:expr, $( $ty:tt ),+ $(,)? ) => {
         $( $input.peek($ty) || )+ false
     };
 }
@@ -704,7 +704,7 @@ macro_rules! peek_any {
 /// Accepts a `ParseStream` followed by one or more types.
 #[macro_export]
 macro_rules! peek2_any {
-    ( $input:expr, $( $ty:tt ),+ ) => {
+    ( $input:expr, $( $ty:tt ),+ $(,)? ) => {
         $( $input.peek2($ty) || )+ false
     };
 }
