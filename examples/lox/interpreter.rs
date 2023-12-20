@@ -218,7 +218,7 @@ fn get(instance: &'static RefCell<Instance>, name: &Ident) -> Result<Value> {
         Ok(Value::Function(function.bind(instance)))
     } else {
         Err(new_error(
-            format!("Undefined property {}", name.string()),
+            format!("Undefined property '{}'", name.string()),
             name,
             error_codes::UNDEFINED_NAME,
         ))
@@ -280,7 +280,7 @@ impl Value {
             (Value::Number(n1), Value::Number(n2)) => Ok(Value::Number(n1 + n2)),
             (Value::String(s1), Value::String(s2)) => Ok(Value::String(s1.to_owned() + s2)),
             _ => Err(new_error(
-                format!("Can't add {} to {}", self, other),
+                format!("Can't add '{}' to '{}'", self, other),
                 op,
                 error_codes::TYPE_ERROR,
             )),
@@ -292,7 +292,7 @@ impl Value {
             Ok(Value::Number(n1 - n2))
         } else {
             Err(new_error(
-                format!("Can't subtract {} from {}", other, self),
+                format!("Can't subtract '{}' from '{}'", other, self),
                 op,
                 error_codes::TYPE_ERROR,
             ))
@@ -304,7 +304,7 @@ impl Value {
             Ok(Value::Number(n1 * n2))
         } else {
             Err(new_error(
-                format!("Can't multiply {} by {}", self, other),
+                format!("Can't multiply '{}' by '{}'", self, other),
                 op,
                 error_codes::TYPE_ERROR,
             ))
@@ -316,7 +316,7 @@ impl Value {
             Ok(Value::Number(n1 / n2))
         } else {
             Err(new_error(
-                format!("Can't divide {} by {}", other, self),
+                format!("Can't divide '{}' by '{}'", other, self),
                 op,
                 error_codes::TYPE_ERROR,
             ))
@@ -328,7 +328,7 @@ impl Value {
             Ok(Value::Number(-n))
         } else {
             Err(new_error(
-                format!("Can't negate {}", self),
+                format!("Can't negate '{}'", self),
                 op,
                 error_codes::TYPE_ERROR,
             ))
@@ -336,13 +336,16 @@ impl Value {
     }
 
     fn cmp<T: Token>(&self, op: &T, other: &Value) -> Result<Ordering> {
+        if self == other {
+            return Ok(Ordering::Equal)
+        }
+
         match (self, other) {
-            (Value::Nil, Value::Nil) => Ok(Ordering::Equal),
             (Value::String(s1), Value::String(s2)) => Ok(s1.cmp(s2).into()),
             (Value::Number(n1), Value::Number(n2)) => Ok(n1.partial_cmp(n2).into()),
             (Value::Bool(b1), Value::Bool(b2)) => Ok(b1.cmp(b2).into()),
             _ => Err(new_error(
-                format!("Can't compare {} with {}", self, other),
+                format!("Can't compare '{}' with '{}'", self, other),
                 op,
                 error_codes::TYPE_ERROR,
             )),
@@ -381,7 +384,7 @@ impl Value {
             | Value::Number(_)
             | Value::Bool(_)
             | Value::Instance(_) => Err(new_error(
-                format!("Can't call {}", self),
+                format!("Can't call '{}'", self),
                 parentheses.span().clone(),
                 error_codes::TYPE_ERROR,
             )),
@@ -396,13 +399,13 @@ impl fmt::Display for Value {
             Value::String(s) => f.write_str(s),
             Value::Number(n) => write!(f, "{n}"),
             Value::Bool(b) => write!(f, "{b}"),
-            Value::Native(NativeFunction { name, .. }) => write!(f, "<native fn {name}>"),
+            Value::Native(NativeFunction { name, .. }) => write!(f, "<native fn '{name}'>"),
             Value::Function(Function {
                 declaration: FunctionDecl { name, .. },
                 ..
             }) => write!(f, "<fn {}>", name.string()),
             Value::Class(class) => f.write_str(&class.name),
-            Value::Instance(instance) => write!(f, "{} instance", instance.borrow().class.name),
+            Value::Instance(instance) => write!(f, "'{}' instance", instance.borrow().class.name),
         }
     }
 }
@@ -713,7 +716,7 @@ impl Expr {
                     Ok(Value::Function(method.bind(object.as_instance().unwrap())))
                 } else {
                     Err(new_error(
-                        format!("Undefined property {}", method.string()),
+                        format!("Undefined property '{}'", method.string()),
                         method,
                         error_codes::UNDEFINED_NAME,
                     ))

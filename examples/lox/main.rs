@@ -394,7 +394,7 @@ impl Expr {
                 keyword: input.parse()?,
                 distance: Cell::new(None),
                 dot: input.parse()?,
-                method: input.parse()?,
+                method: kw::ident(input)?,
             })
         } else if input.peek(kw::this) {
             Ok(Expr::This {
@@ -572,36 +572,6 @@ impl Stmt {
     }
 
     fn for_statement(input: ParseStream) -> Result<Self> {
-        struct ForInner(Option<Stmt>, Expr, Option<Expr>);
-
-        impl Parse for ForInner {
-            fn parse(content: ParseStream) -> Result<Self> {
-                let initialiser = if content.peek(Punct![";"]) {
-                    let _: Punct![";"] = content.parse()?;
-                    None
-                } else if content.peek(kw::var) {
-                    Some(Stmt::var_declaration(content)?)
-                } else {
-                    Some(Stmt::expression_statement(content)?)
-                };
-
-                let condition = if content.peek(Punct![";"]) {
-                    Expr::Literal(Literal::True(kw::kw_true::new(content)))
-                } else {
-                    Expr::parse(content)?
-                };
-                let _: Punct![";"] = content.parse()?;
-
-                let increment = if content.is_empty() {
-                    None
-                } else {
-                    Some(Expr::parse(content)?)
-                };
-
-                Ok(ForInner(initialiser, condition, increment))
-            }
-        }
-
         let _: kw::kw_for = input.parse()?;
 
         let content;
