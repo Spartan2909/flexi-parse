@@ -337,7 +337,7 @@ impl Value {
 
     fn cmp<T: Token>(&self, op: &T, other: &Value) -> Result<Ordering> {
         if self == other {
-            return Ok(Ordering::Equal)
+            return Ok(Ordering::Equal);
         }
 
         match (self, other) {
