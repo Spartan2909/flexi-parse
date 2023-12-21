@@ -67,7 +67,7 @@ enum Binary {
 }
 
 impl Binary {
-    fn left(&self) -> &Expr {
+    const fn left(&self) -> &Expr {
         match self {
             Binary::Mul(left, _, _)
             | Binary::Div(left, _, _)
@@ -82,7 +82,7 @@ impl Binary {
         }
     }
 
-    fn right(&self) -> &Expr {
+    const fn right(&self) -> &Expr {
         match self {
             Binary::Mul(_, _, right)
             | Binary::Div(_, _, right)
@@ -115,13 +115,13 @@ enum Logical {
 }
 
 impl Logical {
-    fn left(&self) -> &Expr {
+    const fn left(&self) -> &Expr {
         match self {
             Logical::And(left, _, _) | Logical::Or(left, _, _) => left,
         }
     }
 
-    fn right(&self) -> &Expr {
+    const fn right(&self) -> &Expr {
         match self {
             Logical::And(_, _, right) | Logical::Or(_, _, right) => right,
         }
@@ -135,7 +135,7 @@ enum Unary {
 }
 
 impl Unary {
-    fn right(&self) -> &Expr {
+    const fn right(&self) -> &Expr {
         match self {
             Unary::Neg(_, right) | Unary::Not(_, right) => right,
         }
@@ -214,7 +214,7 @@ impl Expr {
                 "Invalid assignment target".to_string(),
                 &equals,
                 error_codes::INVALID_ASSIGN,
-            ))
+            ));
         }
 
         Ok(expr)
@@ -681,6 +681,7 @@ impl Parse for Stmt {
 struct Ast(Vec<Stmt>);
 
 impl Ast {
+    #[allow(clippy::wildcard_imports)]
     fn synchronise(input: ParseStream) {
         input.synchronise(|input| {
             use kw::*;
@@ -704,11 +705,7 @@ impl Parse for Ast {
             }
         }
 
-        if let Some(error) = input.get_error() {
-            Err(error)
-        } else {
-            Ok(Ast(stmts))
-        }
+        input.get_error().map_or(Ok(Ast(stmts)), Err)
     }
 }
 

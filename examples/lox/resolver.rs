@@ -254,7 +254,7 @@ impl Stmt {
 
                 state.current_class = enclosing;
             }
-            Stmt::Expr(expr) => expr.resolve(state),
+            Stmt::Expr(expr) | Stmt::Print(expr) => expr.resolve(state),
             Stmt::Function(function) => {
                 state.declare(&function.name);
                 state.declare(&function.name);
@@ -271,7 +271,6 @@ impl Stmt {
                     else_branch.resolve(state);
                 }
             }
-            Stmt::Print(expr) => expr.resolve(state),
             Stmt::Return { keyword, value } => {
                 if state.current_function == FunctionType::None {
                     state.error(new_error(
@@ -309,9 +308,5 @@ pub(super) fn resolve(ast: &Ast) -> Result<()> {
     for stmt in &ast.0 {
         stmt.resolve(&mut state);
     }
-    if let Some(error) = state.error {
-        Err(error)
-    } else {
-        Ok(())
-    }
+    state.error.map_or(Ok(()), Err)
 }

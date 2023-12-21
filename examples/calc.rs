@@ -77,6 +77,7 @@ fn unary(input: ParseStream) -> Result<Expr> {
     }
 }
 
+#[allow(clippy::cast_precision_loss)]
 fn primary(input: ParseStream) -> Result<Expr> {
     let lookahead = input.lookahead();
     if lookahead.peek(token::LitFloat) {
@@ -104,6 +105,7 @@ mod tests {
     use flexi_parse::pretty_unwrap;
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn test_features() {
         let expr: Expr = pretty_unwrap(parse_string(
             "

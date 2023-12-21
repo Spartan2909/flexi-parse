@@ -35,6 +35,7 @@ fn sequential_idents() {
 }
 
 #[test]
+#[allow(clippy::float_cmp)]
 fn literals() {
     let c: LitChar = parse(scan("'s'")).unwrap();
     assert_eq!(c.ch(), 's');
@@ -50,8 +51,8 @@ fn literals() {
 }
 
 #[test]
-fn send_sync_types() {
-    fn assert_send_sync<T: Send + Sync>() {}
+const fn send_sync_types() {
+    const fn assert_send_sync<T: Send + Sync>() {}
 
     assert_send_sync::<ParseBuffer>();
     assert_send_sync::<Span>();

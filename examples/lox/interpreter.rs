@@ -32,6 +32,7 @@ mod natives {
 
     use flexi_parse::Result;
 
+    #[allow(clippy::unnecessary_wraps)]
     pub(super) fn clock(_: Vec<Value>) -> Result<Value> {
         Ok(Value::Number(
             SystemTime::now()
@@ -80,11 +81,7 @@ impl From<cmp::Ordering> for Ordering {
 
 impl From<Option<cmp::Ordering>> for Ordering {
     fn from(value: Option<cmp::Ordering>) -> Self {
-        if let Some(ordering) = value {
-            ordering.into()
-        } else {
-            Ordering::None
-        }
+        value.map_or(Ordering::None, Into::into)
     }
 }
 
@@ -103,7 +100,7 @@ struct Function {
 }
 
 impl Function {
-    fn new(declaration: FunctionDecl, closure: State, is_initialiser: bool) -> Function {
+    const fn new(declaration: FunctionDecl, closure: State, is_initialiser: bool) -> Function {
         Function {
             declaration,
             closure,
@@ -162,7 +159,7 @@ struct Class {
 }
 
 impl Class {
-    fn new(
+    const fn new(
         name: String,
         superclass: Option<Rc<Class>>,
         methods: HashMap<String, Function>,
@@ -175,19 +172,19 @@ impl Class {
     }
 
     fn find_method(&self, name: &str) -> Option<&Function> {
-        if let Some(method) = self.methods.get(name) {
-            Some(method)
-        } else if let Some(superclass) = &self.superclass {
-            superclass.find_method(name)
-        } else {
-            None
-        }
+        self.methods.get(name).map_or_else(
+            || {
+                self.superclass
+                    .as_ref()
+                    .and_then(|superclass| superclass.find_method(name))
+            },
+            Some,
+        )
     }
 
     fn arity(&self) -> usize {
         self.find_method("init")
-            .map(|f| f.declaration.params.len())
-            .unwrap_or(0)
+            .map_or(0, |f| f.declaration.params.len())
     }
 }
 
@@ -248,14 +245,14 @@ enum Value {
 
 fn arity_error(parentheses: &Parentheses, expected: usize, actual: usize) -> Error {
     new_error(
-        format!("Expected {} arguments but got {}", expected, actual),
+        format!("Expected {expected} arguments but got {actual}"),
         parentheses.span().to_owned(),
         error_codes::INCORRECT_ARITY,
     )
 }
 
 impl Value {
-    fn as_class(&self) -> Option<&Rc<Class>> {
+    const fn as_class(&self) -> Option<&Rc<Class>> {
         if let Value::Class(class) = self {
             Some(class)
         } else {
@@ -263,7 +260,7 @@ impl Value {
         }
     }
 
-    fn as_instance(&self) -> Option<&'static RefCell<Instance>> {
+    const fn as_instance(&self) -> Option<&'static RefCell<Instance>> {
         if let Value::Instance(instance) = self {
             Some(*instance)
         } else {
@@ -271,7 +268,7 @@ impl Value {
         }
     }
 
-    fn is_truthy(&self) -> bool {
+    const fn is_truthy(&self) -> bool {
         !matches!(self, Value::Nil | Value::Bool(false))
     }
 
@@ -280,7 +277,7 @@ impl Value {
             (Value::Number(n1), Value::Number(n2)) => Ok(Value::Number(n1 + n2)),
             (Value::String(s1), Value::String(s2)) => Ok(Value::String(s1.to_owned() + s2)),
             _ => Err(new_error(
-                format!("Can't add '{}' to '{}'", self, other),
+                format!("Can't add '{self}' to '{other}'"),
                 op,
                 error_codes::TYPE_ERROR,
             )),
@@ -292,7 +289,7 @@ impl Value {
             Ok(Value::Number(n1 - n2))
         } else {
             Err(new_error(
-                format!("Can't subtract '{}' from '{}'", other, self),
+                format!("Can't subtract '{other}' from '{self}'"),
                 op,
                 error_codes::TYPE_ERROR,
             ))
@@ -304,7 +301,7 @@ impl Value {
             Ok(Value::Number(n1 * n2))
         } else {
             Err(new_error(
-                format!("Can't multiply '{}' by '{}'", self, other),
+                format!("Can't multiply '{self}' by '{other}'"),
                 op,
                 error_codes::TYPE_ERROR,
             ))
@@ -316,7 +313,7 @@ impl Value {
             Ok(Value::Number(n1 / n2))
         } else {
             Err(new_error(
-                format!("Can't divide '{}' by '{}'", other, self),
+                format!("Can't divide '{other}' by '{self}'"),
                 op,
                 error_codes::TYPE_ERROR,
             ))
@@ -328,7 +325,7 @@ impl Value {
             Ok(Value::Number(-n))
         } else {
             Err(new_error(
-                format!("Can't negate '{}'", self),
+                format!("Can't negate '{self}'"),
                 op,
                 error_codes::TYPE_ERROR,
             ))
@@ -345,19 +342,14 @@ impl Value {
             (Value::Number(n1), Value::Number(n2)) => Ok(n1.partial_cmp(n2).into()),
             (Value::Bool(b1), Value::Bool(b2)) => Ok(b1.cmp(b2).into()),
             _ => Err(new_error(
-                format!("Can't compare '{}' with '{}'", self, other),
+                format!("Can't compare '{self}' with '{other}'"),
                 op,
                 error_codes::TYPE_ERROR,
             )),
         }
     }
 
-    fn call(
-        &self,
-        state: &State,
-        arguments: Vec<Value>,
-        parentheses: &Parentheses,
-    ) -> Result<Value> {
+    fn call(&self, arguments: Vec<Value>, parentheses: &Parentheses) -> Result<Value> {
         match self {
             Value::Native(NativeFunction {
                 function, arity, ..
@@ -373,7 +365,7 @@ impl Value {
                     return Err(arity_error(parentheses, class.arity(), arguments.len()));
                 }
 
-                let instance = state.allocate(Instance::new(Rc::clone(class)));
+                let instance = allocate(Instance::new(Rc::clone(class)));
                 if let Some(initialiser) = class.find_method("init") {
                     initialiser.bind(instance).call(arguments, parentheses)?;
                 }
@@ -384,7 +376,7 @@ impl Value {
             | Value::Number(_)
             | Value::Bool(_)
             | Value::Instance(_) => Err(new_error(
-                format!("Can't call '{}'", self),
+                format!("Can't call '{self}'"),
                 parentheses.span().clone(),
                 error_codes::TYPE_ERROR,
             )),
@@ -466,10 +458,10 @@ impl State {
             globals: self.globals,
         })
     }
+}
 
-    fn allocate<T>(&self, value: T) -> &'static RefCell<T> {
-        Box::leak(Box::new(RefCell::new(value)))
-    }
+fn allocate<T>(value: T) -> &'static RefCell<T> {
+    Box::leak(Box::new(RefCell::new(value)))
 }
 
 struct Environment {
@@ -481,17 +473,21 @@ struct Environment {
 
 impl Environment {
     fn get(&self, name: &Ident) -> Result<Value> {
-        if let Some(value) = self.values.get(name.string()) {
-            Ok(value.to_owned())
-        } else if let Some(enclosing) = &self.enclosing {
-            enclosing.borrow().get(name)
-        } else {
-            Err(new_error(
-                format!("Undefined variable '{}'", name.string()),
-                name,
-                error_codes::UNDEFINED_NAME,
-            ))
-        }
+        self.values.get(name.string()).map_or_else(
+            || {
+                self.enclosing.as_ref().map_or_else(
+                    || {
+                        Err(new_error(
+                            format!("Undefined variable '{}'", name.string()),
+                            name,
+                            error_codes::UNDEFINED_NAME,
+                        ))
+                    },
+                    |enclosing| enclosing.borrow().get(name),
+                )
+            },
+            |value| Ok(value.to_owned()),
+        )
     }
 
     fn get_at(&self, name: &Ident, distance: usize) -> Result<Value> {
@@ -593,6 +589,7 @@ impl Literal {
         match self {
             Literal::False(_) => Value::Bool(false),
             Literal::Float(value) => Value::Number(value.value()),
+            #[allow(clippy::cast_precision_loss)]
             Literal::Int(value) => Value::Number(value.value() as f64),
             Literal::Nil(_) => Value::Nil,
             Literal::String(string) => Value::String(string.string().clone()),
@@ -614,10 +611,10 @@ impl Logical {
             }
             Logical::Or(left, _, right) => {
                 let left = left.evaluate(state)?;
-                if !left.is_truthy() {
-                    Ok(left)
-                } else {
+                if left.is_truthy() {
                     right.evaluate(state)
+                } else {
+                    Ok(left)
                 }
             }
         }
@@ -663,7 +660,7 @@ impl Expr {
                 for arg in arguments {
                     evaluated_args.push(arg.evaluate(state)?);
                 }
-                callee.call(state, evaluated_args, paren)
+                callee.call(evaluated_args, paren)
             }
             Expr::Get { object, name } => {
                 if let Value::Instance(instance) = object.evaluate(state)? {
@@ -712,31 +709,30 @@ impl Expr {
                     distance.clone().into_inner().unwrap() - 1,
                 )?;
 
-                if let Some(method) = superclass.as_class().unwrap().find_method(method.string()) {
-                    Ok(Value::Function(method.bind(object.as_instance().unwrap())))
-                } else {
-                    Err(new_error(
-                        format!("Undefined property '{}'", method.string()),
-                        method,
-                        error_codes::UNDEFINED_NAME,
-                    ))
-                }
+                superclass
+                    .as_class()
+                    .unwrap()
+                    .find_method(method.string())
+                    .map_or_else(
+                        || {
+                            Err(new_error(
+                                format!("Undefined property '{}'", method.string()),
+                                method,
+                                error_codes::UNDEFINED_NAME,
+                            ))
+                        },
+                        |method| Ok(Value::Function(method.bind(object.as_instance().unwrap()))),
+                    )
             }
-            Expr::This { keyword, distance } => {
-                if let Some(distance) = distance.get() {
-                    state.environment.borrow().get_at(keyword.ident(), distance)
-                } else {
-                    state.globals.borrow().get(keyword.ident())
-                }
-            }
+            Expr::This { keyword, distance } => distance.get().map_or_else(
+                || state.globals.borrow().get(keyword.ident()),
+                |distance| state.environment.borrow().get_at(keyword.ident(), distance),
+            ),
             Expr::Unary(unary) => unary.evaluate(state),
-            Expr::Variable { name, distance } => {
-                if let Some(distance) = distance.get() {
-                    state.environment.borrow().get_at(name, distance)
-                } else {
-                    state.globals.borrow().get(name)
-                }
-            }
+            Expr::Variable { name, distance } => distance.get().map_or_else(
+                || state.globals.borrow().get(name),
+                |distance| state.environment.borrow().get_at(name, distance),
+            ),
         }
     }
 }
@@ -789,16 +785,17 @@ impl Stmt {
                     .define(name.string().to_owned(), Value::Nil);
 
                 let superclass_is_some = superclass.is_some();
-                let mut state = if let Some(superclass) = &superclass {
-                    let state = state.start_scope();
-                    state
-                        .environment
-                        .borrow_mut()
-                        .define("super".to_string(), Value::Class(Rc::clone(superclass)));
-                    state
-                } else {
-                    state.clone()
-                };
+                let mut state = superclass.as_ref().map_or_else(
+                    || state.clone(),
+                    |superclass| {
+                        let state = state.start_scope();
+                        state
+                            .environment
+                            .borrow_mut()
+                            .define("super".to_string(), Value::Class(Rc::clone(superclass)));
+                        state
+                    },
+                );
 
                 let methods = methods
                     .iter()
@@ -848,14 +845,13 @@ impl Stmt {
             }
             Stmt::Print(expr) => {
                 let value = expr.evaluate(state)?;
-                println!("{}", value);
+                println!("{value}");
             }
             Stmt::Return { keyword: _, value } => {
                 return Ok(Some(
                     value
                         .as_ref()
-                        .map(|v| v.evaluate(state))
-                        .unwrap_or(Ok(Value::Nil))?,
+                        .map_or(Ok(Value::Nil), |v| v.evaluate(state))?,
                 ));
             }
             Stmt::Variable { name, initialiser } => {

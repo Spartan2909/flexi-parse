@@ -11,12 +11,12 @@ use super::scan;
 #[test]
 fn space2() {
     fn space2_inner(input: ParseStream<'_>) -> Result<(String, String, String)> {
-        let _: Space2 = input.parse().unwrap();
-        let test: Ident = input.parse().unwrap();
-        let testing: Ident = input.parse().unwrap();
-        let _: NewLine = input.parse().unwrap();
-        let _: Space2 = input.parse().unwrap();
-        let still_testing: Ident = input.parse().unwrap();
+        let _: Space2 = input.parse()?;
+        let test: Ident = input.parse()?;
+        let testing: Ident = input.parse()?;
+        let _: NewLine = input.parse()?;
+        let _: Space2 = input.parse()?;
+        let still_testing: Ident = input.parse()?;
         Ok((test.string, testing.string, still_testing.string))
     }
 
@@ -32,12 +32,12 @@ fn space2() {
 #[test]
 fn space4() {
     fn space4_inner(input: ParseStream<'_>) -> Result<(String, String, String)> {
-        let _: Space4 = input.parse().unwrap();
-        let test: Ident = input.parse().unwrap();
-        let testing: Ident = input.parse().unwrap();
-        let _: NewLine = input.parse().unwrap();
-        let _: Space4 = input.parse().unwrap();
-        let still_testing: Ident = input.parse().unwrap();
+        let _: Space4 = input.parse()?;
+        let test: Ident = input.parse()?;
+        let testing: Ident = input.parse()?;
+        let _: NewLine = input.parse()?;
+        let _: Space4 = input.parse()?;
+        let still_testing: Ident = input.parse()?;
         Ok((test.string, testing.string, still_testing.string))
     }
 
@@ -53,15 +53,15 @@ fn space4() {
 #[test]
 fn skip() {
     fn skip_inner(input: ParseStream<'_>) -> Result<(String, String)> {
-        let _: Space4 = input.parse().unwrap();
+        let _: Space4 = input.parse()?;
         input.skip_whitespace();
-        let test: Ident = input.parse().unwrap();
-        let _: Space2 = input.parse().unwrap();
+        let test: Ident = input.parse()?;
+        let _: Space2 = input.parse()?;
         input.skip_whitespace();
-        let _: NewLine = input.parse().unwrap();
-        let _: Space2 = input.parse().unwrap();
+        let _: NewLine = input.parse()?;
+        let _: Space2 = input.parse()?;
         input.skip_whitespace();
-        let testing: Ident = input.parse().unwrap();
+        let testing: Ident = input.parse()?;
         Ok((test.string, testing.string))
     }
 

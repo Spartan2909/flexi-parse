@@ -16,7 +16,7 @@ fn scan(source: &str) -> TokenStream {
         None,
     );
     if let Some(error) = error {
-        panic!("{:?}", error);
+        panic!("{error:?}");
     }
     tokens
 }
