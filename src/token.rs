@@ -13,11 +13,13 @@ use crate::group::DoubleQuotes;
 use crate::group::SingleQuotes;
 use crate::private::Marker;
 use crate::private::Sealed;
+use crate::to_tokens::ToTokens;
 use crate::Entry;
 use crate::Parse;
 use crate::ParseStream;
 use crate::Result;
 use crate::Span;
+use crate::TokenStream;
 
 use std::cmp::Ordering;
 use std::collections::HashSet;
@@ -80,6 +82,11 @@ impl LitStrDoubleQuote {
     /// Returns the string within the quotes of this literal.
     pub const fn string(&self) -> &String {
         &self.string
+    }
+
+    /// Constructs a new `LitStrDoubleQuote` with the given value and span.
+    pub const fn new(string: String, span: Span) -> LitStrDoubleQuote {
+        LitStrDoubleQuote { string, span }
     }
 }
 
@@ -158,6 +165,11 @@ impl LitStrSingleQuote {
     pub const fn string(&self) -> &String {
         &self.string
     }
+
+    /// Constructs a new `LitStrSingleQuote` with the given value and span.
+    pub const fn new(string: String, span: Span) -> LitStrSingleQuote {
+        LitStrSingleQuote { string, span }
+    }
 }
 
 impl PartialEq for LitStrSingleQuote {
@@ -234,6 +246,11 @@ impl LitChar {
     /// Returns the character within this literal.
     pub const fn ch(&self) -> char {
         self.ch
+    }
+
+    /// Constructs a new `LitChar` with the given value and span.
+    pub const fn new(ch: char, span: Span) -> LitChar {
+        LitChar { ch, span }
     }
 }
 
@@ -426,6 +443,16 @@ pub(crate) struct SingleCharPunct {
     pub(super) span: Span,
 }
 
+impl SingleCharPunct {
+    pub(crate) const fn new(kind: PunctKind, spacing: Spacing, span: Span) -> SingleCharPunct {
+        SingleCharPunct {
+            kind,
+            spacing,
+            span,
+        }
+    }
+}
+
 impl PartialEq for SingleCharPunct {
     fn eq(&self, other: &Self) -> bool {
         self.kind == other.kind && self.spacing == other.spacing
@@ -518,6 +545,11 @@ impl LitInt {
         Self::parse_decimal_impl(input).map_err(|_| {
             input.unexpected_token(HashSet::from_iter(["an integer literal".to_string()]))
         })
+    }
+
+    /// Constructs a new `LitInt` with the given value and span.
+    pub const fn new(value: u64, span: Span) -> LitInt {
+        LitInt { value, span }
     }
 
     fn parse_impl(input: ParseStream) -> Result<Self> {
@@ -631,6 +663,11 @@ impl LitFloat {
         self.value
     }
 
+    /// Constructs a new `LitFloat` with the given value and span.
+    pub const fn new(value: f64, span: Span) -> LitFloat {
+        LitFloat { value, span }
+    }
+
     #[allow(clippy::cast_precision_loss)] // Should probably warn on this.
     fn parse_impl(input: ParseStream) -> Result<Self> {
         let start = LitInt::parse_decimal(input)?;
@@ -689,21 +726,28 @@ pub const fn LitFloat(marker: Marker) -> LitFloat {
 macro_rules! tokens {
     {
         {
-            $( ($t1:ident, $name1:literal, $doc1:literal) )+
+            $( ($t1:ident, $name1:literal) )+
         }
         {
-            $( ($t2:ident, $t21:ident, $t22:ident, $name2:literal, $doc2:literal) )+
+            $( ($t2:ident, $t21:ident, $t22:ident, $name2:literal) )+
         }
         {
-            $( ($t3:ident, $t31:ident, $t32:ident, $t33:ident, $name3:literal, $doc3:literal) )+
+            $( ($t3:ident, $t31:ident, $t32:ident, $t33:ident, $name3:literal) )+
         }
     } => {
         $(
             #[derive(Debug, Clone)]
-            #[doc = $doc1]
+            #[doc = concat!("`` ", $name1, " ``")]
             pub struct $t1 {
                 /// The span covered by this token.
                 pub span: Span,
+            }
+
+            impl $t1 {
+                #[doc = concat!("Constructs a new `", stringify!($t1), "` with the given span.")]
+                pub const fn new(span: Span) -> $t1 {
+                    $t1 { span }
+                }
             }
 
             impl Parse for $t1 {
@@ -772,6 +816,32 @@ macro_rules! tokens {
                 fn hash<H: hash::Hasher>(&self, _: &mut H) {}
             }
 
+            impl ToTokens for $t1 {
+                fn to_tokens(&self, tokens: &mut TokenStream) {
+                    tokens.push(Entry::Punct(SingleCharPunct::new(
+                        PunctKind::$t1,
+                        Spacing::Alone,
+                        self.span.clone(),
+                    )));
+                }
+            }
+
+            #[cfg(feature = "quote")]
+            impl quote::ToTokens for $t1 {
+                fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+                    use quote::TokenStreamExt as _;
+                    tokens.append_all(proc_macro2::TokenStream::try_from(ToTokens::to_token_stream(self)).unwrap());
+                }
+
+                fn to_token_stream(&self) -> proc_macro2::TokenStream {
+                    ToTokens::to_token_stream(self).try_into().unwrap()
+                }
+
+                fn into_token_stream(self) -> proc_macro2::TokenStream {
+                    ToTokens::into_token_stream(self).try_into().unwrap()
+                }
+            }
+
             #[doc(hidden)]
             #[allow(non_snake_case)]
             pub const fn $t1(marker: Marker) -> $t1 {
@@ -805,13 +875,18 @@ macro_rules! tokens {
 
         $(
             #[derive(Debug, Clone)]
-            #[doc = $doc2]
+            #[doc = concat!("`", $name2, "`")]
             pub struct $t2 {
                 /// The span covered by this token.
                 pub span: Span,
             }
 
             impl $t2 {
+                #[doc = concat!("Constructs a new `", stringify!($t2), "` with the given span.")]
+                pub const fn new(span: Span) -> $t2 {
+                    $t2 { span }
+                }
+
                 fn from_tokens_impl(input: ParseStream) -> Result<Self> {
                     if let Entry::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()? {
 
@@ -891,6 +966,48 @@ macro_rules! tokens {
                 fn hash<H: hash::Hasher>(&self, _: &mut H) {}
             }
 
+            impl ToTokens for $t2 {
+                fn to_tokens(&self, tokens: &mut TokenStream) {
+                    let start_span = Span::new(
+                        self.span.start,
+                        self.span.start + 1,
+                        Arc::clone(&self.span.source),
+                    );
+                    tokens.push(Entry::Punct(SingleCharPunct::new(
+                        PunctKind::$t21,
+                        Spacing::Joint,
+                        start_span,
+                    )));
+
+                    let end_span = Span::new(
+                        self.span.end - 1,
+                        self.span.end,
+                        Arc::clone(&self.span.source),
+                    );
+                    tokens.push(Entry::Punct(SingleCharPunct::new(
+                        PunctKind::$t22,
+                        Spacing::Alone,
+                        end_span,
+                    )));
+                }
+            }
+
+            #[cfg(feature = "quote")]
+            impl quote::ToTokens for $t2 {
+                fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+                    use quote::TokenStreamExt as _;
+                    tokens.append_all(proc_macro2::TokenStream::try_from(ToTokens::to_token_stream(self)).unwrap());
+                }
+
+                fn to_token_stream(&self) -> proc_macro2::TokenStream {
+                    ToTokens::to_token_stream(self).try_into().unwrap()
+                }
+
+                fn into_token_stream(self) -> proc_macro2::TokenStream {
+                    ToTokens::into_token_stream(self).try_into().unwrap()
+                }
+            }
+
             #[doc(hidden)]
             #[allow(non_snake_case)]
             pub const fn $t2(marker: Marker) -> $t2 {
@@ -900,13 +1017,18 @@ macro_rules! tokens {
 
         $(
             #[derive(Debug, Clone)]
-            #[doc = $doc3]
+            #[doc = concat!("`", $name3, "`")]
             pub struct $t3 {
                 /// The span covered by this token.
                 pub span: Span,
             }
 
             impl $t3 {
+                #[doc = concat!("Constructs a new `", stringify!($t3), "` with the given span.")]
+                pub const fn new(span: Span) -> $t3 {
+                    $t3 { span }
+                }
+
                 fn from_tokens_impl(input: ParseStream) -> Result<Self> {
                     if let Entry::Punct(SingleCharPunct { spacing: Spacing::Joint, .. }) = input.current()? {
 
@@ -991,6 +1113,59 @@ macro_rules! tokens {
                 fn hash<H: hash::Hasher>(&self, _: &mut H) {}
             }
 
+            impl ToTokens for $t3 {
+                fn to_tokens(&self, tokens: &mut TokenStream) {
+                    let start_span = Span::new(
+                        self.span.start,
+                        self.span.start + 1,
+                        Arc::clone(&self.span.source),
+                    );
+                    tokens.push(Entry::Punct(SingleCharPunct::new(
+                        PunctKind::$t31,
+                        Spacing::Joint,
+                        start_span,
+                    )));
+
+                    let mid_span = Span::new(
+                        self.span.start + 1,
+                        self.span.start + 2,
+                        Arc::clone(&self.span.source),
+                    );
+                    tokens.push(Entry::Punct(SingleCharPunct::new(
+                        PunctKind::$t32,
+                        Spacing::Joint,
+                        mid_span,
+                    )));
+
+                    let end_span = Span::new(
+                        self.span.end - 1,
+                        self.span.end,
+                        Arc::clone(&self.span.source),
+                    );
+                    tokens.push(Entry::Punct(SingleCharPunct::new(
+                        PunctKind::$t33,
+                        Spacing::Alone,
+                        end_span,
+                    )));
+                }
+            }
+
+            #[cfg(feature = "quote")]
+            impl quote::ToTokens for $t3 {
+                fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+                    use quote::TokenStreamExt as _;
+                    tokens.append_all(proc_macro2::TokenStream::try_from(ToTokens::to_token_stream(self)).unwrap());
+                }
+
+                fn to_token_stream(&self) -> proc_macro2::TokenStream {
+                    ToTokens::to_token_stream(self).try_into().unwrap()
+                }
+
+                fn into_token_stream(self) -> proc_macro2::TokenStream {
+                    ToTokens::into_token_stream(self).try_into().unwrap()
+                }
+            }
+
             #[doc(hidden)]
             #[allow(non_snake_case)]
             pub const fn $t3(marker: Marker) -> $t3 {
@@ -1002,70 +1177,70 @@ macro_rules! tokens {
 
 tokens! {
     {
-        (Bang, '!', "`!`")
-        (Colon, ':', "`:`")
-        (Equal, '=', "`=`")
-        (SemiColon, ';', "`;`")
-        (LAngle, '<', "`<`")
-        (RAngle, '>', "`>`")
-        (Plus, '+', "`+`")
-        (Dash, '-', "`-`")
-        (Asterisk, '*', "`*`")
-        (Slash, '/', "`/`")
-        (Percent, '%', "`%`")
-        (Dot, '.', "`.`")
-        (Comma, ',', "`,`")
-        (LeftParen, '(', "`(`")
-        (RightParen, ')', "`)`")
-        (LeftBracket, '[', "`[`")
-        (RightBracket, ']', "`]`")
-        (LeftBrace, '{', "`{`")
-        (RightBrace, '}', "`}`")
-        (At, '@', "`@`")
-        (Caret, '^', "`^`")
-        (BackTick, '`', "`` ` ``")
-        (Pipe, '|', "`|`")
-        (Ampersand, '&', "`&`")
-        (Tilde, '~', "`~`")
-        (Tilde2, '¬', "`¬`")
-        (Backslash, '\\', "`\\`")
-        (Question, '?', "`?`")
-        (Hash, '#', "`#`")
-        (Pound, '£', "`£`")
-        (Dollar, '$', "`$`")
-        (UnderScore, '_', "`_`")
-        (SingleQuote, '\'', "`'`")
-        (DoubleQuote, '"', "`\"`")
+        (Bang, '!')
+        (Colon, ':')
+        (Equal, '=')
+        (SemiColon, ';')
+        (LAngle, '<')
+        (RAngle, '>')
+        (Plus, '+')
+        (Dash, '-')
+        (Asterisk, '*')
+        (Slash, '/')
+        (Percent, '%')
+        (Dot, '.')
+        (Comma, ',')
+        (LeftParen, '(')
+        (RightParen, ')')
+        (LeftBracket, '[')
+        (RightBracket, ']')
+        (LeftBrace, '{')
+        (RightBrace, '}')
+        (At, '@')
+        (Caret, '^')
+        (BackTick, '`')
+        (Pipe, '|')
+        (Ampersand, '&')
+        (Tilde, '~')
+        (Tilde2, '¬')
+        (Backslash, '\\')
+        (Question, '?')
+        (Hash, '#')
+        (Pound, '£')
+        (Dollar, '$')
+        (UnderScore, '_')
+        (SingleQuote, '\'')
+        (DoubleQuote, '"')
     }
     {
-        (BangEqual, Bang, Equal, "!=", "`!=`")
-        (EqualEqual, Equal, Equal, "==", "`==`")
-        (RAngleEqual, RAngle, Equal, ">=", "`>=`")
-        (LAngleEqual, LAngle, Equal, "<=", "`<=`")
-        (PlusEqual, Plus, Equal, "+=", "`+=`")
-        (DashEqual, Dash, Equal, "-=", "`-=`")
-        (AsteriskEqual, Asterisk, Equal, "*=", "`*=`")
-        (SlashEqual, Slash, Equal, "/=", "`/=`")
-        (PercentEqual, Percent, Equal, "%=", "`%=`")
-        (LAngleLAngle, LAngle, LAngle, "<<", "`<<`")
-        (RAngleRAngle, RAngle, RAngle, ">>", "`>>`")
-        (LThinArrow, LAngle, Dash, "<-", "`<-`")
-        (RThinArrow, Dash, RAngle, "->", "`->`")
-        (FatArrow, Equal, RAngle, "=>", "`=>`")
-        (SlashSlash, Slash, Slash, "//", "`//`")
-        (ColonColon, Colon, Colon, "::", "`::`")
-        (HashHash, Hash, Hash, "##", "`##`")
-        (AmpersandAmpersand, Ampersand, Ampersand, "&&", "`&&`")
-        (PipePipe, Pipe, Pipe, "||", "`||`")
-        (PlusPlus, Plus, Plus, "++", "`++`")
-        (DashDash, Dash, Dash, "--", "`--`")
+        (BangEqual, Bang, Equal, "!=")
+        (EqualEqual, Equal, Equal, "==")
+        (RAngleEqual, RAngle, Equal, ">=")
+        (LAngleEqual, LAngle, Equal, "<=")
+        (PlusEqual, Plus, Equal, "+=")
+        (DashEqual, Dash, Equal, "-=")
+        (AsteriskEqual, Asterisk, Equal, "*=")
+        (SlashEqual, Slash, Equal, "/=")
+        (PercentEqual, Percent, Equal, "%=")
+        (LAngleLAngle, LAngle, LAngle, "<<")
+        (RAngleRAngle, RAngle, RAngle, ">>")
+        (LThinArrow, LAngle, Dash, "<-")
+        (RThinArrow, Dash, RAngle, "->")
+        (FatArrow, Equal, RAngle, "=>")
+        (SlashSlash, Slash, Slash, "//")
+        (ColonColon, Colon, Colon, "::")
+        (HashHash, Hash, Hash, "##")
+        (AmpersandAmpersand, Ampersand, Ampersand, "&&")
+        (PipePipe, Pipe, Pipe, "||")
+        (PlusPlus, Plus, Plus, "++")
+        (DashDash, Dash, Dash, "--")
     }
     {
-        (HashHashHash, Hash, Hash, Hash, "###", "`###`")
-        (SlashSlashEqual, Slash, Slash, Equal, "//=", "`//=`")
-        (LAngleLAngleEqual, LAngle, LAngle, Equal, "<<=", "`<<=`")
-        (RAngleRAngleEqual, RAngle, RAngle, Equal, ">>=", "`>>=`")
-        (ColonColonEqual, Colon, Colon, Equal, "::=", "`::=`")
+        (HashHashHash, Hash, Hash, Hash, "###")
+        (SlashSlashEqual, Slash, Slash, Equal, "//=")
+        (LAngleLAngleEqual, LAngle, LAngle, Equal, "<<=")
+        (RAngleRAngleEqual, RAngle, RAngle, Equal, ">>=")
+        (ColonColonEqual, Colon, Colon, Equal, "::=")
     }
 }
 
@@ -1538,7 +1713,7 @@ macro_rules! keywords {
         #[allow(dead_code)]
         pub fn ident(input: $crate::ParseStream) -> $crate::Result<$crate::token::Ident> {
             let ident: $crate::token::Ident = input.parse()?;
-            if [$( stringify!($kw) ),+].contains(&ident.string().as_str()) {
+            if [$( ::core::stringify!($kw) ),+].contains(&ident.string().as_str()) {
                 $crate::Result::Err(input.unexpected_token(
                     ::std::collections::HashSet::from_iter(["an identifier".to_string()]),
                 ))
@@ -1561,7 +1736,7 @@ macro_rules! keywords {
             #[allow(dead_code)]
             pub fn new(input: $crate::ParseStream) -> Self {
                 Self {
-                    ident: $crate::token::Ident::new(stringify!($kw).to_string(), input.empty_span()),
+                    ident: $crate::token::Ident::new(::core::stringify!($kw).to_string(), input.empty_span()),
                 }
             }
 
@@ -1573,14 +1748,14 @@ macro_rules! keywords {
 
         impl $crate::Parse for $name {
             fn parse(input: $crate::ParseStream) -> $crate::Result<Self> {
-                let ident: $crate::token::Ident = input.parse()?;
-                if ident.string() == stringify!($kw) {
+                let ident: $crate::token::Ident = $crate::Parse::parse(input)?;
+                if ident.string() == ::core::stringify!($kw) {
                     $crate::Result::Ok(Self {
-                        ident: ident
+                        ident
                     })
                 } else {
                     $crate::Result::Err(input.unexpected_token(
-                        ::std::collections::HashSet::from_iter([stringify!($kw).to_string()]),
+                        ::std::collections::HashSet::from_iter([::core::stringify!($kw).to_string()]),
                     ))
                 }
             }
@@ -1598,17 +1773,29 @@ macro_rules! keywords {
             }
 
             fn display() -> String {
-                stringify!($name).to_string()
+                ::core::stringify!($name).to_string()
             }
         }
 
-        impl ::std::cmp::PartialEq for $name {
-            fn eq(&self, _other: &Self) -> bool {
+        impl ::core::cmp::PartialEq for $name {
+            fn eq(&self, _: &Self) -> bool {
                 true
             }
         }
 
-        impl ::std::cmp::Eq for $name {}
+        impl ::core::cmp::Eq for $name {}
+
+        impl ::core::cmp::PartialOrd for $name {
+            fn partial_cmp(&self, other: &Self) -> ::core::option::Option<::core::cmp::Ordering> {
+                ::core::option::Option::Some(::core::cmp::Ord::cmp(self, other))
+            }
+        }
+
+        impl ::core::cmp::Ord for $name {
+            fn cmp(&self, _: &Self) -> ::core::cmp::Ordering {
+                ::core::cmp::Ordering::Equal
+            }
+        }
 
         #[doc(hidden)]
         #[allow(dead_code)]

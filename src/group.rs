@@ -405,7 +405,7 @@ pub(crate) fn parse_delimiters<D: Delimiters>(
     Ok((
         start,
         end,
-        TokenStream::new(tokens, Arc::clone(&input.source)),
+        TokenStream::new(tokens, Some(Arc::clone(&input.source))),
     ))
 }
 

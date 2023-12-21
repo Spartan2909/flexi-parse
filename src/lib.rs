@@ -9,6 +9,7 @@ use std::collections::HashSet;
 use std::fmt;
 use std::fs;
 use std::io;
+use std::iter::Extend;
 use std::path::Path;
 use std::ptr;
 use std::result;
@@ -16,6 +17,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::OnceLock;
 
 pub mod error;
 use error::Error;
@@ -33,7 +35,10 @@ mod scanner;
 
 mod to_string;
 
+pub mod to_tokens;
+
 pub mod token;
+use to_tokens::ToTokens;
 use token::Ident;
 use token::SingleCharPunct;
 use token::Token;
@@ -41,6 +46,19 @@ use token::WhiteSpace;
 
 #[cfg(feature = "proc-macro2")]
 mod proc_macro;
+#[cfg(feature = "proc-macro2")]
+pub use proc_macro::ToTokensWrapper;
+
+fn default_source_file<'a>() -> &'a Arc<SourceFile> {
+    static DEFAULT_SOURCE_FILE: OnceLock<Arc<SourceFile>> = OnceLock::new();
+    DEFAULT_SOURCE_FILE.get_or_init(|| {
+        Arc::new(SourceFile {
+            name: String::new(),
+            path: None,
+            contents: String::new(),
+        })
+    })
+}
 
 /// A struct representing a file of source code.
 ///
@@ -112,20 +130,40 @@ impl Span {
         Span { start, end, source }
     }
 
-    /// Creates a new `Span` from the start of `start` to the end of `end`.
+    /// Create a new [`Span`] covering no tokens.
+    ///
+    /// This span has a special 'sentinel' source file which is automatically
+    /// overridden when joining with [`Span::across`].
+    pub fn empty() -> Span {
+        Span {
+            start: 0,
+            end: 0,
+            source: Arc::clone(default_source_file()),
+        }
+    }
+
+    /// Create a new [`Span`] from the start of `start` to the end of `end`.
     ///
     /// ## Panics
     /// This function will panic if `start` and `end` come from different source
-    /// files.
+    /// files and neither of them .
     pub fn across(start: &Span, end: &Span) -> Span {
-        assert_eq!(
-            start.source, end.source,
-            "both inputs to `across` must come from the same source file"
-        );
-        Span {
-            start: start.start,
-            end: end.end,
-            source: Arc::clone(&start.source),
+        if &start.source == default_source_file() {
+            Span {
+                start: start.start,
+                end: end.end,
+                source: Arc::clone(&end.source),
+            }
+        } else {
+            assert_eq!(
+                start.source, end.source,
+                "both inputs to `across` must come from the same source file"
+            );
+            Span {
+                start: start.start,
+                end: end.end,
+                source: Arc::clone(&start.source),
+            }
         }
     }
 
@@ -148,7 +186,7 @@ impl Span {
         (newlines + 1, self.start - last_newline + 1)
     }
 
-    /// Returns true if the span was created with `Span::new_empty()`.
+    /// Returns true if `self` covers no tokens.
     pub const fn is_empty(&self) -> bool {
         self.start == self.end
     }
@@ -192,7 +230,10 @@ impl<F: FnOnce(ParseStream) -> Result<T>, T> Parser for F {
             offset: AtomicUsize::new(0),
             last: tokens.tokens.len() - 1,
         };
-        self(&ParseBuffer::new(cursor, Arc::clone(&tokens.source)))
+        self(&ParseBuffer::new(
+            cursor,
+            Arc::clone(tokens.source.as_ref().unwrap()),
+        ))
     }
 }
 
@@ -294,11 +335,11 @@ pub fn pretty_unwrap<T>(result: Result<T>) -> T {
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub struct TokenStream {
     tokens: Vec<Entry>,
-    source: Arc<SourceFile>,
+    source: Option<Arc<SourceFile>>,
 }
 
 impl TokenStream {
-    fn new(tokens: Vec<Entry>, source: Arc<SourceFile>) -> TokenStream {
+    fn new(tokens: Vec<Entry>, source: Option<Arc<SourceFile>>) -> TokenStream {
         TokenStream { tokens, source }
     }
 
@@ -369,6 +410,18 @@ impl TokenStream {
     pub fn is_empty(&self) -> bool {
         self.tokens.len() == 1
     }
+
+    fn push(&mut self, entry: Entry) {
+        if self.source.is_none() {
+            self.source = Some(Arc::clone(&entry.span().source));
+        }
+        self.tokens.push(entry);
+    }
+
+    /// Add another [`TokenStream`] to the end of `self`.
+    pub fn append(&mut self, other: &mut TokenStream) {
+        self.tokens.append(&mut other.tokens);
+    }
 }
 
 impl TryFrom<Arc<SourceFile>> for TokenStream {
@@ -377,6 +430,14 @@ impl TryFrom<Arc<SourceFile>> for TokenStream {
     fn try_from(value: Arc<SourceFile>) -> Result<Self> {
         let (tokens, error) = scanner::scan(value, 0, None);
         error.map_or(Ok(tokens), Err)
+    }
+}
+
+impl<A: ToTokens> Extend<A> for TokenStream {
+    fn extend<T: IntoIterator<Item = A>>(&mut self, iter: T) {
+        for item in iter {
+            self.tokens.append(&mut item.into_token_stream().tokens);
+        }
     }
 }
 
@@ -557,10 +618,14 @@ impl<'a> ParseBuffer<'a> {
                 ErrorKind::EndOfFile(self.source.contents.len()),
             ))
         } else {
-            let (token, offset) = self.cursor.next();
-            self.cursor.offset.store(offset, Ordering::SeqCst);
-            Ok(token)
+            Ok(self.next_raw())
         }
+    }
+
+    fn next_raw(&'a self) -> &'a Entry {
+        let (token, offset) = self.cursor.next();
+        self.cursor.offset.store(offset, Ordering::SeqCst);
+        token
     }
 
     fn current(&'a self) -> Result<&'a Entry> {
@@ -683,7 +748,25 @@ impl<'a> From<TokenStream> for ParseBuffer<'a> {
             offset: AtomicUsize::new(0),
             last,
         };
-        ParseBuffer::new(cursor, value.source)
+        ParseBuffer::new(
+            cursor,
+            value
+                .source
+                .unwrap_or_else(|| Arc::clone(default_source_file())),
+        )
+    }
+}
+
+impl<'a> From<&'a TokenStream> for ParseBuffer<'a> {
+    fn from(value: &'a TokenStream) -> Self {
+        let last = value.tokens.len() - 1;
+        let cursor = Cursor {
+            stream: Cow::Borrowed(&value.tokens),
+            offset: AtomicUsize::new(0),
+            last,
+        };
+        let source = Arc::clone(value.source.as_ref().unwrap_or_else(default_source_file));
+        ParseBuffer::new(cursor, source)
     }
 }
 

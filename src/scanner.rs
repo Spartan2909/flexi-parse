@@ -53,7 +53,7 @@ impl Scanner {
             Some(self.errors)
         };
 
-        (TokenStream::new(tokens, self.source), errors)
+        (TokenStream::new(tokens, Some(self.source)), errors)
     }
 
     fn scan_token(&mut self) -> Result<Option<Entry>> {
