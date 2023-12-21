@@ -309,5 +309,6 @@ impl_literals![
     LitStrSingleQuote,
     LitChar,
     LitInt,
-    LitFloat
+    LitFloat,
+    Ident,
 ];
