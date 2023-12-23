@@ -29,18 +29,3 @@ jobs:
       run: cargo test --verbose --all-features --workspace
     - name: Run Clippy
       run: cargo clippy --verbose --all-features --workspace -- -D warnings
-  miri:
-    if: false
-    name: Test with Miri
-    runs-on: ubuntu-latest
-    needs: test
-
-    steps:
-      - uses: actions/checkout@v3
-      - name: Setup
-        run: |
-          rustup toolchain add nightly --component miri
-          rustup override set nightly
-          cargo miri setup
-      - name: Run Miri
-        run: 'cargo miri test --lib --all-features --verbose'
