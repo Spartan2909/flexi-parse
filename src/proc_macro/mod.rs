@@ -211,7 +211,21 @@ fn token_stream_to_token_stream_2(tokens: &TokenStream) -> Result<TokenStream2> 
                 ))),
             },
             Entry::WhiteSpace(_) => {}
-            Entry::End => break,
+            #[cfg(feature = "scan-strings")]
+            Entry::LitStrDoubleQuote(str) => {
+                token_trees.push(TokenTree2::Literal(Literal::string(str.string())));
+            }
+            #[cfg(feature = "scan-strings")]
+            Entry::LitStrSingleQuote(str) => {
+                assert!(
+                    str.string().len() == 1,
+                    "invalid char literal '{}'",
+                    str.string()
+                );
+                token_trees.push(TokenTree2::Literal(Literal::character(
+                    str.string().chars().next().unwrap(),
+                )));
+            }
         }
         buf.next_raw();
     }

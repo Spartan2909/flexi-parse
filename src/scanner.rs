@@ -2,6 +2,8 @@ use crate::error::Error;
 use crate::error::ErrorKind;
 use crate::token::CarriageReturn;
 use crate::token::Ident;
+use crate::token::LitStrDoubleQuote;
+use crate::token::LitStrSingleQuote;
 use crate::token::NewLine;
 use crate::token::PunctKind;
 use crate::token::SingleCharPunct;
@@ -45,8 +47,6 @@ impl Scanner {
             }
         }
 
-        tokens.push(Entry::End);
-
         let errors = if self.errors.is_empty() {
             None
         } else {
@@ -58,6 +58,36 @@ impl Scanner {
 
     fn scan_token(&mut self) -> Result<Option<Entry>> {
         let token = match self.peek(0)? {
+            #[cfg(feature = "scan-strings")]
+            '"' => {
+                let start = self.current;
+                let mut buf = String::new();
+                self.current += 1;
+                while self.peek(0)? != '"' {
+                    buf.push(self.peek(0)?);
+                    self.current += 1;
+                }
+                self.current += 1;
+
+                let span = Span::new(start, self.current, Arc::clone(&self.source));
+
+                Entry::LitStrDoubleQuote(LitStrDoubleQuote::new(buf, span))
+            }
+            #[cfg(feature = "scan-strings")]
+            '\'' => {
+                let start = self.current;
+                let mut buf = String::new();
+                self.current += 1;
+                while self.peek(0)? != '\'' {
+                    buf.push(self.peek(0)?);
+                    self.current += 1;
+                }
+                self.current += 1;
+
+                let span = Span::new(start, self.current, Arc::clone(&self.source));
+
+                Entry::LitStrSingleQuote(LitStrSingleQuote::new(buf, span))
+            }
             c if PunctKind::try_from(c).is_ok() => {
                 let kind = c.try_into().unwrap();
                 let span = Span::new(self.current, self.current + 1, Arc::clone(&self.source));

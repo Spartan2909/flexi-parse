@@ -72,7 +72,6 @@ use crate::token::RightBracket;
 use crate::token::RightParen;
 use crate::token::SingleQuote;
 use crate::token::Token;
-use crate::Entry;
 use crate::Parse;
 use crate::ParseStream;
 use crate::Result;
@@ -468,8 +467,7 @@ impl<D> hash::Hash for Group<D> {
 
 impl<D: Delimiters> Parse for Group<D> {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let (start, end, mut token_stream) = parse_delimiters::<D>(input)?;
-        token_stream.tokens.push(Entry::End);
+        let (start, end, token_stream) = parse_delimiters::<D>(input)?;
         let span = Span::across(start.span(), end.span());
         Ok(Group {
             token_stream,

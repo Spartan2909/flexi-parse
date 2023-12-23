@@ -124,7 +124,7 @@ impl From<&SingleError> for Report {
             ariadne::Report::build((&value.kind).into(), value.source.id(), value.kind.start())
                 .with_code(value.kind.code());
         match &value.kind {
-            ErrorKind::Silent => unreachable!(),
+            ErrorKind::Silent => unreachable!("attempted to print silent error"),
             ErrorKind::Custom { message, span, .. } => {
                 builder.set_message(message);
                 builder.add_label(Label::new(span.clone()).with_color(Color::Red));

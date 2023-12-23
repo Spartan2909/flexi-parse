@@ -118,6 +118,12 @@ impl hash::Hash for LitStrDoubleQuote {
 
 impl Parse for LitStrDoubleQuote {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
+        #[cfg(feature = "scan-strings")]
+        if let Entry::LitStrDoubleQuote(string) = input.current()? {
+            input.next_raw();
+            return Ok(string.clone());
+        }
+
         let (start, end, _) = parse_delimiters::<DoubleQuotes>(input).map_err(|mut err| {
             err.group_to_string();
             err
@@ -200,6 +206,12 @@ impl hash::Hash for LitStrSingleQuote {
 
 impl Parse for LitStrSingleQuote {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
+        #[cfg(feature = "scan-strings")]
+        if let Entry::LitStrSingleQuote(string) = input.current()? {
+            input.next_raw();
+            return Ok(string.clone());
+        }
+
         let (start, end, _) = parse_delimiters::<SingleQuotes>(input).map_err(|mut err| {
             err.group_to_string();
             err
@@ -558,7 +570,8 @@ impl LitInt {
         let start: u8 = chars
             .next()
             .unwrap()
-            .try_into()
+            .to_string()
+            .parse()
             .map_err(|_| Error::empty())?;
         if start == 0 && ident.string.len() >= 3 {
             let ch = chars.next().unwrap();
@@ -1773,7 +1786,7 @@ macro_rules! keywords {
             }
 
             fn display() -> String {
-                ::core::stringify!($name).to_string()
+                ::core::stringify!($kw).to_string()
             }
         }
 

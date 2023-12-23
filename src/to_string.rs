@@ -1,3 +1,4 @@
+use crate::token::Token;
 use crate::Entry;
 use crate::TokenStream;
 
@@ -22,7 +23,16 @@ impl fmt::Display for TokenStream {
                     this_token_span = whitespace.span().clone();
                     whitespace.display()
                 }
-                Entry::End => break,
+                #[cfg(feature = "scan-strings")]
+                Entry::LitStrDoubleQuote(str) => {
+                    this_token_span = str.span().clone();
+                    format!(r#""{}""#, str.string())
+                }
+                #[cfg(feature = "scan-strings")]
+                Entry::LitStrSingleQuote(str) => {
+                    this_token_span = str.span().clone();
+                    format!("'{}'", str.string())
+                }
             };
             for _ in last_token_end..this_token_span.start {
                 write!(f, " ")?;

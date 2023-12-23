@@ -40,6 +40,8 @@ pub mod to_tokens;
 pub mod token;
 use to_tokens::ToTokens;
 use token::Ident;
+use token::LitStrDoubleQuote;
+use token::LitStrSingleQuote;
 use token::SingleCharPunct;
 use token::Token;
 use token::WhiteSpace;
@@ -228,7 +230,7 @@ impl<F: FnOnce(ParseStream) -> Result<T>, T> Parser for F {
         let cursor = Cursor {
             stream: Cow::Borrowed(tokens.tokens.as_slice()),
             offset: AtomicUsize::new(0),
-            last: tokens.tokens.len() - 1,
+            len: tokens.tokens.len(),
         };
         self(&ParseBuffer::new(
             cursor,
@@ -273,7 +275,7 @@ pub fn parse_source<T: Parse>(source: Arc<SourceFile>) -> Result<T> {
 /// This function ignores all whitespace.
 ///
 /// ## Errors
-/// Forwards any error from `T::parse`.
+/// Forwards any errors from `T::parse`.
 pub fn parse_string<T: Parse>(source: String) -> Result<T> {
     let source = Arc::new(SourceFile {
         name: "str".to_string(),
@@ -598,10 +600,13 @@ impl<'a> ParseBuffer<'a> {
     }
 
     fn report_error_tokens(&self) -> Result<()> {
+        if self.cursor.eof() {
+            return Ok(());
+        }
         let mut error = false;
-        while let (Entry::Error(_), offset) = self.cursor.next() {
-            self.cursor.offset.store(offset, Ordering::SeqCst);
+        while let Entry::Error(_) = self.cursor.current() {
             error = true;
+            self.cursor.next();
         }
         if error {
             Err(Error::new(Arc::clone(&self.source), ErrorKind::Silent))
@@ -612,20 +617,19 @@ impl<'a> ParseBuffer<'a> {
 
     fn next(&'a self) -> Result<&'a Entry> {
         self.report_error_tokens()?;
-        if self.cursor.eof() {
-            Err(Error::new(
-                Arc::clone(&self.source),
-                ErrorKind::EndOfFile(self.source.contents.len()),
-            ))
-        } else {
-            Ok(self.next_raw())
-        }
+        self.next_raw().map_or_else(
+            || {
+                Err(Error::new(
+                    Arc::clone(&self.source),
+                    ErrorKind::EndOfFile(self.source.contents.len()),
+                ))
+            },
+            Ok,
+        )
     }
 
-    fn next_raw(&'a self) -> &'a Entry {
-        let (token, offset) = self.cursor.next();
-        self.cursor.offset.store(offset, Ordering::SeqCst);
-        token
+    fn next_raw(&'a self) -> Option<&'a Entry> {
+        self.cursor.next()
     }
 
     fn current(&'a self) -> Result<&'a Entry> {
@@ -709,11 +713,10 @@ impl<'a> ParseBuffer<'a> {
     ///
     /// This method will not skip newlines.
     pub fn skip_whitespace(&self) {
-        while let (Entry::WhiteSpace(whitespace), offset) = self.cursor.next() {
+        while let Some(Entry::WhiteSpace(whitespace)) = self.cursor.next() {
             if matches!(whitespace, WhiteSpace::NewLine(_)) {
                 break;
             }
-            self.cursor.offset.store(offset, Ordering::SeqCst);
         }
     }
 
@@ -742,11 +745,11 @@ impl fmt::Debug for ParseBuffer<'_> {
 
 impl<'a> From<TokenStream> for ParseBuffer<'a> {
     fn from(value: TokenStream) -> Self {
-        let last = value.tokens.len() - 1;
+        let len = value.tokens.len();
         let cursor = Cursor {
             stream: Cow::Owned(value.tokens),
             offset: AtomicUsize::new(0),
-            last,
+            len,
         };
         ParseBuffer::new(
             cursor,
@@ -759,11 +762,10 @@ impl<'a> From<TokenStream> for ParseBuffer<'a> {
 
 impl<'a> From<&'a TokenStream> for ParseBuffer<'a> {
     fn from(value: &'a TokenStream) -> Self {
-        let last = value.tokens.len() - 1;
         let cursor = Cursor {
             stream: Cow::Borrowed(&value.tokens),
             offset: AtomicUsize::new(0),
-            last,
+            len: value.tokens.len(),
         };
         let source = Arc::clone(value.source.as_ref().unwrap_or_else(default_source_file));
         ParseBuffer::new(cursor, source)
@@ -799,16 +801,16 @@ pub type ParseStream<'a> = &'a ParseBuffer<'a>;
 struct Cursor<'a> {
     stream: Cow<'a, [Entry]>,
     offset: AtomicUsize,
-    last: usize,
+    len: usize,
 }
 
 impl<'a> Cursor<'a> {
-    fn bump(&self) -> usize {
+    fn bump(&self) -> Option<usize> {
         let offset = self.offset.load(Ordering::SeqCst);
-        if offset == self.last {
-            offset
+        if self.eof() {
+            None
         } else {
-            offset + 1
+            Some(offset + 1)
         }
     }
 
@@ -817,13 +819,15 @@ impl<'a> Cursor<'a> {
     }
 
     pub fn eof(&self) -> bool {
-        self.offset.load(Ordering::SeqCst) == self.last
+        self.offset.load(Ordering::SeqCst) == self.len
     }
 
-    fn next(&'a self) -> (&'a Entry, usize) {
-        let token_tree = self.current();
-        let offset = self.bump();
-        (token_tree, offset)
+    fn next(&'a self) -> Option<&'a Entry> {
+        self.bump().map(|next| {
+            let token = self.current();
+            self.offset.store(next, Ordering::SeqCst);
+            token
+        })
     }
 
     fn get_relative(&'a self, offset: isize) -> Option<&'a Entry> {
@@ -842,7 +846,7 @@ impl<'a> Clone for Cursor<'a> {
         Cursor {
             stream: self.stream.clone(),
             offset: AtomicUsize::new(self.offset.load(Ordering::SeqCst)),
-            last: self.last,
+            len: self.len,
         }
     }
 }
@@ -853,7 +857,10 @@ enum Entry {
     Ident(Ident),
     Punct(SingleCharPunct),
     WhiteSpace(WhiteSpace),
-    End,
+    #[cfg(feature = "scan-strings")]
+    LitStrDoubleQuote(LitStrDoubleQuote),
+    #[cfg(feature = "scan-strings")]
+    LitStrSingleQuote(LitStrSingleQuote),
 }
 
 impl Entry {
@@ -863,7 +870,10 @@ impl Entry {
             Entry::Ident(ident) => &ident.span,
             Entry::Punct(punct) => &punct.span,
             Entry::WhiteSpace(whitespace) => whitespace.span(),
-            Entry::End => unreachable!(),
+            #[cfg(feature = "scan-strings")]
+            Entry::LitStrDoubleQuote(str) => str.span(),
+            #[cfg(feature = "scan-strings")]
+            Entry::LitStrSingleQuote(str) => str.span(),
         }
     }
 
@@ -874,7 +884,10 @@ impl Entry {
             Entry::Ident(ident) => ident.span = span,
             Entry::Punct(punct) => punct.span = span,
             Entry::WhiteSpace(whitespace) => whitespace.set_span(span),
-            Entry::End => unreachable!(),
+            #[cfg(feature = "scan-strings")]
+            Entry::LitStrDoubleQuote(str) => str.set_span(span),
+            #[cfg(feature = "scan-strings")]
+            Entry::LitStrSingleQuote(str) => str.set_span(span),
         }
     }
 }

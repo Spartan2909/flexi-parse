@@ -18,10 +18,11 @@ quote = { version = "1", optional = true }
 strum = { version = "0.25", features = ["derive"] }
 
 [features]
-default = ["ariadne"]
+default = ["ariadne", "proc-macro", "scan-strings"]
 ariadne = ["dep:ariadne"]
 proc-macro = ["proc-macro2", "proc-macro2/proc-macro"]
-proc-macro2 = ["dep:proc-macro2", "dep:quote"]
+proc-macro2 = ["dep:proc-macro2", "dep:quote", "scan-strings"]
+scan-strings = []
 
 [[example]]
 name = "calc"
