@@ -294,21 +294,21 @@ impl hash::Hash for LitChar {
 
 impl Parse for LitChar {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let (start, end, _) = parse_delimiters::<SingleQuotes>(input).map_err(|mut err| {
-            err.group_to_char();
+        let string: LitStrSingleQuote = input.parse().map_err(|mut err| {
+            err.string_to_char();
             err
         })?;
-        let (start, end) = (start.span(), end.span());
-        let string = input.source.contents[start.end..end.start].to_owned();
-        let span = Span::across(start, end);
-        if string.len() != 1 {
+        if string.string.len() != 1 {
             return Err(Error::new(
                 Arc::clone(&input.source),
-                ErrorKind::LongChar(span),
+                ErrorKind::LongChar(string.span),
             ));
         }
-        let ch = string.chars().next().unwrap();
-        Ok(LitChar { ch, span })
+        let ch = string.string.chars().next().unwrap();
+        Ok(LitChar {
+            ch,
+            span: string.span,
+        })
     }
 }
 

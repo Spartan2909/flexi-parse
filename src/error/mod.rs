@@ -149,9 +149,9 @@ impl Error {
         }
     }
 
-    pub(crate) fn group_to_char(&mut self) {
+    pub(crate) fn string_to_char(&mut self) {
         for error in &mut self.errors {
-            if let ErrorKind::UnterminatedGroup { span, .. } = &error.kind {
+            if let ErrorKind::UnterminatedString(span) = &error.kind {
                 let span = span.to_owned();
                 error.kind = ErrorKind::UnterminatedChar(span);
             }

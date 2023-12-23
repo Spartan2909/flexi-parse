@@ -713,8 +713,11 @@ impl<'a> ParseBuffer<'a> {
     ///
     /// This method will not skip newlines.
     pub fn skip_whitespace(&self) {
-        while let Some(Entry::WhiteSpace(whitespace)) = self.cursor.next() {
+        while let Entry::WhiteSpace(whitespace) = self.cursor.current() {
             if matches!(whitespace, WhiteSpace::NewLine(_)) {
+                break;
+            }
+            if self.next_raw().is_none() {
                 break;
             }
         }
