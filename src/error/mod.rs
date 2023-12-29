@@ -15,15 +15,12 @@ use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
 
-use strum::EnumDiscriminants;
-
 #[cfg(feature = "ariadne")]
 mod ariadne;
 #[cfg(feature = "ariadne")]
 pub use self::ariadne::Report;
 
-#[derive(Debug, Clone, EnumDiscriminants)]
-#[strum_discriminants(repr(u16))]
+#[derive(Debug, Clone)]
 #[repr(u16)]
 pub(crate) enum ErrorKind {
     Silent,
@@ -48,14 +45,17 @@ pub(crate) enum ErrorKind {
 }
 
 impl ErrorKind {
-    fn code(&self) -> u16 {
-        // SAFETY: ErrorKind is `repr(u16)`, making it a `repr(C)` struct with
-        // a `u16` as its first field
-        let discriminant = ErrorKindDiscriminants::from(self) as u16;
-        if let ErrorKind::Custom { code, .. } = self {
-            discriminant + code
-        } else {
-            discriminant
+    const fn code(&self) -> u16 {
+        match self {
+            ErrorKind::Silent => 0,
+            ErrorKind::UnknownCharacter(_) => 1,
+            ErrorKind::UnterminatedGroup { .. } => 2,
+            ErrorKind::UnterminatedChar(_) => 3,
+            ErrorKind::LongChar(_) => 4,
+            ErrorKind::UnterminatedString(_) => 5,
+            ErrorKind::UnexpectedToken { .. } => 6,
+            ErrorKind::EndOfFile(_) => 7,
+            ErrorKind::Custom { code, .. } => 8 + *code,
         }
     }
 

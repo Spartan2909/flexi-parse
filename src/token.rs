@@ -28,9 +28,6 @@ use std::hash;
 use std::result;
 use std::sync::Arc;
 
-#[doc(hidden)]
-pub use concat_idents::concat_idents;
-
 /// A trait for types that can be represented by a single token.
 ///
 /// This trait is sealed, and cannot be implemented by types outside of this
