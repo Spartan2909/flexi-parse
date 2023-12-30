@@ -311,16 +311,12 @@ pub fn parse_repeated<T: Parse>(input: ParseStream) -> Result<Vec<T>> {
 #[cfg(feature = "ariadne")]
 pub fn pretty_unwrap<T>(result: Result<T>) -> T {
     result.unwrap_or_else(|err| {
-        let mut buf = vec![];
-        for report in err.to_reports() {
-            report.write(&mut buf).unwrap();
-        }
-        String::from_utf8(buf).map_or_else(
-            |_| {
+        err.details().map_or_else(
+            || {
                 err.eprint().unwrap();
                 panic!("failed due to above errors");
             },
-            |s| panic!("{s}"),
+            |details| panic!("{details}"),
         )
     })
 }
@@ -909,6 +905,29 @@ impl From<SingleCharPunct> for Entry {
 
 /// The return type of a parsing function.
 pub type Result<T> = result::Result<T, Error>;
+
+/// Attempts to parse a [`TokenStream`] into an implementor of [`Parse`],
+/// producing a compiler error if it fails.
+///
+/// Must be used in a function that returns a type that implements
+/// [`Into<proc_macro::TokenStream>`][tokenstream].
+///
+/// Note that this macro may not interact well with functions with a generic
+/// return type.
+///
+/// [tokenstream]: https://doc.rust-lang.org/stable/proc_macro/struct.TokenStream.html
+#[cfg(feature = "proc-macro")]
+#[macro_export]
+macro_rules! parse_macro_input {
+    ($expr:expr) => {
+        match $crate::parse($expr) {
+            ::core::result::Result::Ok(v) => v,
+            ::core::result::Result::Err(e) => {
+                return $crate::error::Error::to_compile_error(&e).into()
+            }
+        }
+    };
+}
 
 #[doc(hidden)]
 pub mod private {

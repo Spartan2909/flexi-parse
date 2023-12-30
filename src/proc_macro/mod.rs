@@ -33,6 +33,7 @@ use proc_macro2::Span as Span2;
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro2::TokenTree as TokenTree2;
 
+use quote::quote;
 use quote::TokenStreamExt;
 
 #[cfg(feature = "proc-macro")]
@@ -326,3 +327,16 @@ impl_literals![
     LitFloat,
     Ident,
 ];
+
+impl Error {
+    /// Converts this error into a compiler error, formatting it with
+    /// [`ariadne`][ariadne] if enabled.
+    ///
+    /// [ariadne]: https://docs.rs/ariadne/latest/ariadne/
+    #[allow(clippy::missing_panics_doc)] // `Vec<u8>::write` will not error.
+    pub fn to_compile_error(&self) -> proc_macro2::TokenStream {
+        let details = self.details().unwrap_or_else(|| self.to_string());
+        let details = proc_macro2::TokenTree::Literal(proc_macro2::Literal::string(&details));
+        quote!(::core::compile_error!(#details))
+    }
+}

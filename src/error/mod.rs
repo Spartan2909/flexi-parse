@@ -170,6 +170,23 @@ impl Error {
         self.add(other);
         self
     }
+
+    pub(crate) fn details(&self) -> Option<String> {
+        #[cfg(feature = "ariadne")]
+        let details = {
+            let mut buf = vec![];
+            self.to_reports()
+                .into_iter()
+                .try_for_each(|report| report.write(&mut buf))
+                .ok()
+                .and_then(|()| String::from_utf8(buf).ok())
+        };
+
+        #[cfg(not(feature = "ariadne"))]
+        let details = None;
+
+        details
+    }
 }
 
 impl fmt::Display for Error {
