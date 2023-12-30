@@ -406,7 +406,7 @@ impl TokenStream {
 
     /// Returns true if there are no tokens in `self`.
     pub fn is_empty(&self) -> bool {
-        self.tokens.len() == 1
+        self.tokens.len() == 0
     }
 
     fn push(&mut self, entry: Entry) {
