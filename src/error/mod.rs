@@ -143,8 +143,7 @@ impl Error {
     pub(crate) fn group_to_string(&mut self) {
         for error in &mut self.errors {
             if let ErrorKind::UnterminatedGroup { span, .. } = &error.kind {
-                let span = span.to_owned();
-                error.kind = ErrorKind::UnterminatedString(span);
+                error.kind = ErrorKind::UnterminatedString(span.clone());
             }
         }
     }
@@ -152,8 +151,7 @@ impl Error {
     pub(crate) fn string_to_char(&mut self) {
         for error in &mut self.errors {
             if let ErrorKind::UnterminatedString(span) = &error.kind {
-                let span = span.to_owned();
-                error.kind = ErrorKind::UnterminatedChar(span);
+                error.kind = ErrorKind::UnterminatedChar(span.clone());
             }
         }
     }

@@ -176,14 +176,16 @@ impl Span {
 
     /// Returns the start line and start column.
     fn start_location(&self) -> (usize, usize) {
-        let mut newlines = 0;
-        let mut last_newline = 0;
-        for (i, char) in self.source.contents[..self.start].chars().enumerate() {
-            if char == '\n' {
-                newlines += 1;
-                last_newline = i;
-            }
-        }
+        let (newlines, last_newline) = self.source.contents[..self.start].chars().enumerate().fold(
+            (0, 0),
+            |(newlines, last_newline), (index, ch)| {
+                if ch == '\n' {
+                    (newlines + 1, index)
+                } else {
+                    (newlines, last_newline)
+                }
+            },
+        );
 
         (newlines + 1, self.start - last_newline + 1)
     }
@@ -355,20 +357,21 @@ impl TokenStream {
     /// Note that the `parse*` functions remove all whitespace.
     pub fn prepare_whitespace(&mut self) {
         self.filter(|tokens| {
-            let mut indices = vec![];
             let mut post_newline = true;
-            for (index, entry) in tokens.tokens.iter().enumerate() {
-                if let Entry::WhiteSpace(whitespace) = entry {
-                    if matches!(whitespace, WhiteSpace::NewLine(_)) {
-                        post_newline = true;
-                    } else if !post_newline {
-                        indices.push(index);
+            tokens
+                .tokens
+                .iter()
+                .enumerate()
+                .filter(|&(_, entry)| {
+                    match entry {
+                        Entry::WhiteSpace(WhiteSpace::NewLine(_)) => post_newline = true,
+                        Entry::WhiteSpace(_) => return !post_newline,
+                        _ => post_newline = false,
                     }
-                } else {
-                    post_newline = false;
-                }
-            }
-            indices
+                    false
+                })
+                .map(|(index, _)| index)
+                .collect()
         });
     }
 
@@ -377,15 +380,17 @@ impl TokenStream {
     /// Note that the `parse*` functions will remove all whitespace.
     pub fn remove_blank_space(&mut self) {
         self.filter(|tokens| {
-            let mut indices = vec![];
-            for (index, entry) in tokens.tokens.iter().enumerate() {
-                if let Entry::WhiteSpace(whitespace) = entry {
-                    if !matches!(whitespace, WhiteSpace::NewLine(_)) {
-                        indices.push(index);
-                    }
-                }
-            }
-            indices
+            tokens
+                .tokens
+                .iter()
+                .enumerate()
+                .filter(|&(_, entry)| match entry {
+                    Entry::WhiteSpace(WhiteSpace::NewLine(_)) => false,
+                    Entry::WhiteSpace(_) => true,
+                    _ => false,
+                })
+                .map(|(index, _)| index)
+                .collect()
         });
     }
 
@@ -394,13 +399,13 @@ impl TokenStream {
     /// This method is automatically called by the `parse*` functions.
     pub fn remove_whitespace(&mut self) {
         self.filter(|tokens| {
-            let mut indices = vec![];
-            for (index, entry) in tokens.tokens.iter().enumerate() {
-                if let Entry::WhiteSpace(_) = entry {
-                    indices.push(index);
-                }
-            }
-            indices
+            tokens
+                .tokens
+                .iter()
+                .enumerate()
+                .filter(|&(_, entry)| matches!(entry, Entry::WhiteSpace(_)))
+                .map(|(index, _)| index)
+                .collect()
         });
     }
 
