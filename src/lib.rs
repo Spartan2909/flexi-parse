@@ -343,54 +343,33 @@ impl TokenStream {
         TokenStream { tokens, source }
     }
 
-    fn filter<F: FnMut(&TokenStream) -> Vec<usize>>(&mut self, mut function: F) {
-        let mut indices = function(self);
-        indices.sort_unstable();
-        indices.reverse();
-        for index in indices {
-            self.tokens.remove(index);
-        }
+    fn filter<F: FnMut(&Entry) -> bool>(&mut self, function: F) {
+        self.tokens.retain(function);
     }
 
     /// Removes all whitespace that doesn't come at the start of a line.
     ///
     /// Note that the `parse*` functions remove all whitespace.
     pub fn prepare_whitespace(&mut self) {
-        self.filter(|tokens| {
-            let mut post_newline = true;
-            tokens
-                .tokens
-                .iter()
-                .enumerate()
-                .filter(|&(_, entry)| {
-                    match entry {
-                        Entry::WhiteSpace(WhiteSpace::NewLine(_)) => post_newline = true,
-                        Entry::WhiteSpace(_) => return !post_newline,
-                        _ => post_newline = false,
-                    }
-                    false
-                })
-                .map(|(index, _)| index)
-                .collect()
-        });
+        let mut post_newline = true;
+        self.filter(|entry| {
+            match entry {
+                Entry::WhiteSpace(WhiteSpace::NewLine(_)) => post_newline = true,
+                Entry::WhiteSpace(_) => return post_newline,
+                _ => post_newline = false,
+            }
+            true
+        })
     }
 
     /// Removes all non-newline whitespace from `self`.
     ///
     /// Note that the `parse*` functions will remove all whitespace.
     pub fn remove_blank_space(&mut self) {
-        self.filter(|tokens| {
-            tokens
-                .tokens
-                .iter()
-                .enumerate()
-                .filter(|&(_, entry)| match entry {
-                    Entry::WhiteSpace(WhiteSpace::NewLine(_)) => false,
-                    Entry::WhiteSpace(_) => true,
-                    _ => false,
-                })
-                .map(|(index, _)| index)
-                .collect()
+        self.filter(|entry| match entry {
+            Entry::WhiteSpace(WhiteSpace::NewLine(_)) => true,
+            Entry::WhiteSpace(_) => false,
+            _ => true,
         });
     }
 
@@ -398,15 +377,7 @@ impl TokenStream {
     ///
     /// This method is automatically called by the `parse*` functions.
     pub fn remove_whitespace(&mut self) {
-        self.filter(|tokens| {
-            tokens
-                .tokens
-                .iter()
-                .enumerate()
-                .filter(|&(_, entry)| matches!(entry, Entry::WhiteSpace(_)))
-                .map(|(index, _)| index)
-                .collect()
-        });
+        self.filter(|entry| !matches!(entry, Entry::WhiteSpace(_)));
     }
 
     /// Returns true if there are no tokens in `self`.
