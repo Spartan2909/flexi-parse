@@ -32,13 +32,12 @@ impl<T, P: Punct> Punctuated<T, P> {
         self.pairs.push((value, punct));
     }
 
-    /// Parses instances of `T` separated by instances of `P`, with no trailing
-    /// punctuation.
+    /// Parses instances of `T` separated by instances of `P`, with no trailing punctuation.
     ///
-    /// Note that this will stop as soon as it encounters a token that doesn't
-    /// fit this pattern.
+    /// Note that this will stop as soon as it encounters a token that doesn't fit this pattern.
     ///
     /// ## Errors
+    ///
     /// Forwards any errors from `T::parse`.
     pub fn parse_separated(input: ParseStream<'_>) -> Result<Self>
     where
@@ -47,13 +46,13 @@ impl<T, P: Punct> Punctuated<T, P> {
         Self::parse_separated_with(input, T::parse)
     }
 
-    /// Parses instances of `T` using `f`, separated by instances of `P`, with
-    /// no trailing punctuation.
+    /// Parses instances of `T` using `f`, separated by instances of `P`, with no trailing
+    /// punctuation.
     ///
-    /// Note that this will stop as soon as it encounters a token that doesn't
-    /// fit this pattern.
+    /// Note that this will stop as soon as it encounters a token that doesn't fit this pattern.
     ///
     /// ## Errors
+    ///
     /// Forwards any errors from `f`.
     pub fn parse_separated_with<F: FnMut(ParseStream<'_>) -> Result<T>>(
         input: ParseStream<'_>,
@@ -70,13 +69,12 @@ impl<T, P: Punct> Punctuated<T, P> {
         Ok(punctuated)
     }
 
-    /// Parses instances of `T` separated by instances of `P`, with optional
-    /// trailing punctuation.
+    /// Parses instances of `T` separated by instances of `P`, with optional trailing punctuation.
     ///
-    /// Note that this will stop as soon as it encounters a token that doesn't
-    /// fit this pattern.
+    /// Note that this will stop as soon as it encounters a token that doesn't fit this pattern.
     ///
     /// ## Errors
+    ///
     /// Forwards any errors from `T::parse`.
     pub fn parse_separated_trailing(input: ParseStream<'_>) -> Result<Self>
     where
@@ -85,13 +83,13 @@ impl<T, P: Punct> Punctuated<T, P> {
         Self::parse_separated_trailing_with(input, T::parse)
     }
 
-    /// Parses instances of `T` using `f`, separated by instances of `P`, with
-    /// optional trailing punctuation.
+    /// Parses instances of `T` using `f`, separated by instances of `P`, with optional trailing
+    /// punctuation.
     ///
-    /// Note that this will stop as soon as it encounters a token that doesn't
-    /// fit this pattern.
+    /// Note that this will stop as soon as it encounters a token that doesn't fit this pattern.
     ///
     /// ## Errors
+    ///
     /// Forwards any errors from `f`.
     pub fn parse_separated_trailing_with<F: FnMut(ParseStream<'_>) -> Result<T>>(
         input: ParseStream<'_>,
@@ -113,12 +111,12 @@ impl<T, P: Punct> Punctuated<T, P> {
         Ok(punctuated)
     }
 
-    /// Parses instances of `T` separated by instances of `P`, with trailing
-    /// punctuation.
+    /// Parses instances of `T` separated by instances of `P`, with trailing punctuation.
     ///
     /// Note that this function attempts to consume the entire stream.
     ///
     /// ## Errors
+    ///
     /// Forwards any errors from `T::parse`.
     pub fn parse_terminated(input: ParseStream<'_>) -> Result<Self>
     where
@@ -127,12 +125,12 @@ impl<T, P: Punct> Punctuated<T, P> {
         Self::parse_terminated_with(input, T::parse)
     }
 
-    // Parses instances of `T` using `f`, separated by instances of `P`, with
-    /// trailing punctuation.
+    /// Parses instances of `T` using `f`, separated by instances of `P`, withtrailing punctuation.
     ///
     /// Note that this function attempts to consume the entire stream.
     ///
     /// ## Errors
+    ///
     /// Forwards any errors from `f`.
     pub fn parse_terminated_with<F: FnMut(ParseStream<'_>) -> Result<T>>(
         input: ParseStream<'_>,
@@ -164,8 +162,7 @@ impl<T, P: Punct> Punctuated<T, P> {
         }
     }
 
-    /// Returns an iterator over the pairs of values and punctuation in this
-    /// struct.
+    /// Returns an iterator over the pairs of values and punctuation in this struct.
     pub fn pairs(&self) -> Pairs<T, P> {
         Pairs {
             main: self.pairs.iter(),

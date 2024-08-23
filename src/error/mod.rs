@@ -1,9 +1,9 @@
 //! Types for error reporting.
 //!
-//! This module is built around the [`Error`] type, which is returned when any
-//! parsing function encounters an error. Typically, these will not be created
-//! directly, but instead propagated up from the built-in parsing functions.
-//! The exception to this is [`Lookahead::error`][lookahead-error].
+//! This module is built around the [`Error`] type, which is returned when any parsing function
+//! encounters an error. Typically, these will not be created directly, but instead propagated up
+//! from the built-in parsing functions. The primary exception to this is
+//! [`Lookahead::error`][lookahead-error].
 //!
 //! [lookahead-error]: crate::lookahead::Lookahead::error
 //! [parsebuffer-error]: crate::ParseBuffer::error
@@ -104,9 +104,8 @@ pub(crate) struct SingleError {
 
 /// An error or collection of errors raised during parsing.
 ///
-/// These errors are intended to be reported using [`ariadne`][ariadne], but an
-/// implementation of [`ToString`] is provided as an alternative if that is not
-/// possible.
+/// These errors are intended to be reported using [`ariadne`][ariadne], but an implementation of
+/// [`ToString`] is provided as an alternative if that is not possible.
 ///
 /// [ariadne]: https://docs.rs/ariadne/latest/ariadne/
 #[derive(Debug, Clone)]

@@ -7,8 +7,8 @@ use crate::ParseBuffer;
 use std::collections::HashSet;
 use std::sync::Mutex;
 
-/// A type for peeking at the next token, and generating a helpful error if it
-/// isn't an expected type.
+/// A type for peeking at the next token, and generating a helpful error if it isn't an expected
+/// type.
 pub struct Lookahead<'a> {
     stream: ParseBuffer<'a>,
     comparisons: Mutex<HashSet<String>>,
@@ -25,6 +25,7 @@ impl<'a> Lookahead<'a> {
     /// Returns true if the next token is the given type.
     ///
     /// ## Panics
+    ///
     /// Panics if another thread panicked while peeking through this value.
     pub fn peek<T: Peek>(&self, token: T) -> bool {
         if self.stream.peek(token) {
@@ -38,6 +39,7 @@ impl<'a> Lookahead<'a> {
     /// Generates an error based on the peek attempts.
     ///
     /// ## Panics
+    ///
     /// Panics if another thread panicked while peeking through this value.
     pub fn error(self) -> Error {
         self.stream
@@ -47,8 +49,7 @@ impl<'a> Lookahead<'a> {
 
 /// Types that can be parsed by looking at a single token.
 ///
-/// This trait is sealed, and cannot be implemented for types outside of this
-/// crate.
+/// This trait is sealed, and cannot be implemented for types outside of this crate.
 pub trait Peek: Sealed {
     #[doc(hidden)]
     type Token: Token;

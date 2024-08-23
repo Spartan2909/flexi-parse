@@ -64,8 +64,8 @@ impl ariadne::Cache<SourceId> for &SourceCache {
 ///
 /// This type exposes a very similar API to [`ariadne::Report`].
 ///
-/// A `Vec<Report>` can be created from an [`Error`], but in most cases, the
-/// [`Error::eprint`] method will suffice.
+/// A `Vec<Report>` can be created from an [`Error`], but in most cases, the [`Error::eprint`]
+/// method will suffice.
 pub struct Report {
     report: ariadne::Report<'static, Span>,
 }
@@ -108,8 +108,7 @@ impl Report {
         self.report.eprint(&*SOURCE_CACHE.read().unwrap())
     }
 
-    /// Prints this diagnostic to stdout. In most cases, [`Report::eprint`] is
-    /// preferable to this.
+    /// Prints this diagnostic to stdout. In most cases, [`Report::eprint`] is  preferable to this.
     ///
     /// For more details, see [`ariadne::Report::print`].
     ///
@@ -186,6 +185,7 @@ impl Error {
     /// Prints this error to stderr.
     ///
     /// ## Errors
+    ///
     /// Returns an error if writing to stderr fails.
     pub fn eprint(&self) -> io::Result<()> {
         let reports: Vec<Report> = self.into();

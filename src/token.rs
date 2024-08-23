@@ -30,8 +30,7 @@ use std::sync::Arc;
 
 /// A trait for types that can be represented by a single token.
 ///
-/// This trait is sealed, and cannot be implemented by types outside of this
-/// crate.
+/// This trait is sealed, and cannot be implemented by types outside of this crate.
 pub trait Token: Parse + fmt::Debug + Sealed {
     /// Returns the span covered by this token.
     fn span(&self) -> &Span;
@@ -59,8 +58,7 @@ impl<T: Token> From<&T> for Span {
 
 /// A trait for punctuation tokens.
 ///
-/// This trait is sealed, and cannot be implemented by types outside of this
-/// crate.
+/// This trait is sealed, and cannot be implemented by types outside of this crate.
 pub trait Punct: Token {
     #[doc(hidden)]
     fn peek(input: ParseStream<'_>) -> bool;
@@ -331,8 +329,8 @@ pub const fn LitChar(marker: Marker) -> LitChar {
     match marker {}
 }
 
-/// An identifier consisting of alphanumeric characters and underscores, and
-/// starting with an alphabetic character or an underscore.
+/// An identifier consisting of alphanumeric characters and underscores, and starting with an
+/// alphabetic character or an underscore.
 #[derive(Debug, Clone)]
 pub struct Ident {
     pub(crate) string: String,
@@ -345,8 +343,7 @@ impl Ident {
         &self.string
     }
 
-    /// Creates a new identifier in the given [`ParseStream`] with the given
-    /// string.
+    /// Creates a new identifier in the given [`ParseStream`] with the given string.
     pub const fn new(string: String, span: Span) -> Ident {
         Ident { string, span }
     }
@@ -523,9 +520,8 @@ impl From<Result<char>> for Spacing {
 
 /// An integer literal.
 ///
-/// The default parsing implementation accepts either a string of ascii digits,
-/// or `0b`, `0o`, or `0x`, followed by a number in base 2, 8, or 16
-/// respectively.
+/// The default parsing implementation accepts either a string of ascii digits, or `0b`, `0o`, or
+/// `0x`, followed by a number in base 2, 8, or 16 respectively.
 #[derive(Debug, Clone)]
 pub struct LitInt {
     value: u64,
@@ -549,6 +545,7 @@ impl LitInt {
     /// Parses a base 10 integer.
     ///
     /// ## Errors
+    ///
     /// Returns an error if the input is not a base 10 integer.
     pub fn parse_decimal(input: ParseStream) -> Result<Self> {
         Self::parse_decimal_impl(input).map_err(|_| {
@@ -655,8 +652,7 @@ pub const fn LitInt(marker: Marker) -> LitInt {
     match marker {}
 }
 
-/// A string of ascii digits followed by a `.`, and then another string of
-/// ascii digits.
+/// A string of ascii digits followed by a `.`, and then another string of ascii digits.
 #[derive(Debug, Clone)]
 pub struct LitFloat {
     value: f64,
@@ -1813,16 +1809,14 @@ macro_rules! keywords {
 
 /// A macro to get the type of a punctuation token.
 ///
-/// To avoid ambiguity, whitespace tokens are not available through this this
-/// macro. Instead, use them directly, such as in `token::Space4`.
+/// To avoid ambiguity, whitespace tokens are not available through this this macro. Instead, use
+/// them directly, such as in `token::Space4`.
 ///
-/// If the punctuation you want is not recognised by this macro, split it into
-/// its constituent parts, e.g. `Punct!["£", "$"]` for `£$` or
-/// `Punct!["++", "-"]` for `++-`.
+/// If the punctuation you want is not recognised by this macro, split it into its constituent
+/// parts, e.g. `Punct!["£", "$"]` for `£$` or `Punct!["++", "-"]` for `++-`.
 ///
-/// Note that unlike [`syn::Token`], this macro accepts the token as a quoted
-/// string. This allows tokens not recognised by the Rust scanner to be
-/// accessed with this macro.
+/// Note that unlike [`syn::Token`], this macro accepts the token as a quoted string. This allows
+/// tokens not recognised by the Rust scanner to be accessed with this macro.
 ///
 /// [`syn::Token`]: https://docs.rs/syn/latest/syn/macro.Token.html
 #[macro_export]

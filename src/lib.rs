@@ -1,6 +1,5 @@
-//! flexi-parse is a crate for parsing arbitrary syntax into a syntax tree. It
-//! is intended to be more flexible than a parser generator or parser
-//! combinator, while still being simple to use.
+//! flexi-parse is a crate for parsing arbitrary syntax into a syntax tree. It is intended to be
+//! more flexible than a parser generator or parser combinator, while still being simple to use.
 
 #![cfg_attr(all(doc, not(doctest)), feature(doc_auto_cfg))]
 
@@ -144,6 +143,7 @@ impl SourceFile {
     /// Reads the file at the given path into a `SourceFile`.
     ///
     /// ## Errors
+    ///
     /// This function returns an error if the given path is not readable.
     pub fn read(path: PathBuf) -> io::Result<SourceFile> {
         let contents = fs::read_to_string(&path)?;
@@ -215,8 +215,7 @@ impl fmt::Debug for SourceFile {
 
 /// A region of source code.
 ///
-/// Note that unlike [`proc_macro::Span`], this struct contains a reference to
-/// the file containing it.
+/// Note that unlike [`proc_macro::Span`], this struct contains a reference containing file.
 ///
 /// [`proc_macro::Span`]: https://doc.rust-lang.org/stable/proc_macro/struct.Span.html
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -241,8 +240,8 @@ impl Span {
 
     /// Create a new [`Span`] covering no tokens.
     ///
-    /// This span has a special 'sentinel' source file which is automatically
-    /// overridden when joining with [`Span::across`].
+    /// This span has a special 'sentinel' source file which is automatically overridden when
+    /// joining with [`Span::across`].
     pub fn empty() -> Span {
         Span {
             start: 0,
@@ -299,8 +298,8 @@ pub trait Parse: Sized {
     /// Parses the input into this type.
     ///
     /// ## Errors
-    /// This function returns an error if `source` doesn't contain a valid instance
-    /// of `T`.
+    ///
+    /// This function returns an error if `source` doesn't contain a valid instance of `T`.
     fn parse(input: ParseStream) -> Result<Self>;
 }
 
@@ -318,8 +317,8 @@ pub trait Parser: Sized {
     /// Parses a [`TokenStream`] into the relevant syntax tree node.
     ///
     /// ## Errors
-    /// This function returns an error if `source` doesn't contain a valid
-    /// instance of `T`.
+    ///
+    /// This function returns an error if `source` doesn't contain a valid instance of `T`.
     fn parse(self, tokens: TokenStream) -> Result<Self::Output>;
 }
 
@@ -344,6 +343,7 @@ impl<F: FnOnce(ParseStream) -> Result<T>, T> Parser for F {
 /// This function ignores all whitespace.
 ///
 /// ## Errors
+///
 /// Forwards any error from `T::parse`.
 pub fn parse<T: Parse>(mut tokens: TokenStream) -> Result<T> {
     tokens.remove_whitespace();
@@ -355,6 +355,7 @@ pub fn parse<T: Parse>(mut tokens: TokenStream) -> Result<T> {
 /// This function ignores all whitespace.
 ///
 /// ## Errors
+///
 /// Forwards any errors from `T::parse`.
 pub fn parse_source<T: Parse>(source: Arc<SourceFile>) -> Result<T> {
     let (tokens, error) = scanner::scan(source, 0, None);
@@ -375,6 +376,7 @@ pub fn parse_source<T: Parse>(source: Arc<SourceFile>) -> Result<T> {
 /// This function ignores all whitespace.
 ///
 /// ## Errors
+///
 /// Forwards any errors from `T::parse`.
 pub fn parse_string<T: Parse>(source: String) -> Result<T> {
     let source = Arc::new(SourceFile {
@@ -387,13 +389,13 @@ pub fn parse_string<T: Parse>(source: String) -> Result<T> {
     parse_source(source)
 }
 
-/// Attempts to repeatedly parse `input` into the given syntax tree node,
-/// using `T`'s default parsing implementation, and continuing until `input` is
-/// exhausted.
+/// Attempts to repeatedly parse `input` into the given syntax tree node, using `T`'s default
+/// parsing implementation, and continuing until `input` is exhausted.
 ///
 /// Note that this function doesn't perform any error recovery.
 ///
 /// ## Errors
+///
 /// Forwards any errors from `T::parse`.
 pub fn parse_repeated<T: Parse>(input: ParseStream) -> Result<Vec<T>> {
     let mut items = vec![];
@@ -405,10 +407,10 @@ pub fn parse_repeated<T: Parse>(input: ParseStream) -> Result<Vec<T>> {
     Ok(items)
 }
 
-/// Gets the `Ok` value, panicking with a formatted error message if the value
-/// is `Err`.
+/// Gets the `Ok` value, panicking with a formatted error message if the value is `Err`.
 ///
 /// ## Panics
+///
 /// Panics if the contained value is `Err`.
 #[cfg(feature = "ariadne")]
 pub fn pretty_unwrap<T>(result: Result<T>) -> T {
@@ -426,9 +428,8 @@ pub fn pretty_unwrap<T>(result: Result<T>) -> T {
 /// A sequence of tokens.
 ///
 /// This is the return type of
-/// [`Group::token_stream`][group::Group::into_token_stream], and can be created
-/// from a [`proc_macro::TokenStream`][proc-macro] or
-/// [`proc_macro2::TokenStream`][proc-macro2].
+/// [`Group::token_stream`][group::Group::into_token_stream], and can be created from a
+/// [`proc_macro::TokenStream`][proc-macro] or [`proc_macro2::TokenStream`][proc-macro2].
 ///
 /// [proc-macro]: https://doc.rust-lang.org/proc_macro/struct.TokenStream.html
 /// [proc-macro2]: https://docs.rs/proc-macro2/latest/proc_macro2/struct.TokenStream.html
@@ -515,8 +516,8 @@ impl<A: ToTokens> Extend<A> for TokenStream {
     }
 }
 
-/// Creates a new error in the given source file, at the given location, and
-/// with the given message and code.
+/// Creates a new error in the given source file, at the given location, and with the given message
+/// and code.
 ///
 /// `location` will accept any type that is `Token`, `Delimiter`, or a `Span`.
 pub fn new_error<L: Into<Span>>(message: String, location: L, code: u16) -> Error {
@@ -547,10 +548,11 @@ impl<'a> ParseBuffer<'a> {
         }
     }
 
-    /// Attempts to parse `self` into the given syntax tree node, using `T`'s
-    /// default parsing implementation.
+    /// Attempts to parse `self` into the given syntax tree node, using `T`'s default parsing
+    /// implementation.
     ///
     /// ## Errors
+    ///
     /// Returns an error if `T`'s `Parse` implementation fails.
     pub fn parse<T: Parse>(&self) -> Result<T> {
         T::parse(self)
@@ -561,8 +563,7 @@ impl<'a> ParseBuffer<'a> {
         self.cursor.eof()
     }
 
-    /// Creates a new error at the given location with the given message and
-    /// code.
+    /// Creates a new error at the given location with the given message and code.
     pub fn new_error<T: Into<Span>>(&self, message: String, location: T, code: u16) -> Error {
         Error::new(
             Arc::clone(&self.source),
@@ -580,8 +581,7 @@ impl<'a> ParseBuffer<'a> {
         self.error.borrow_mut().add(error);
     }
 
-    /// Returns an error consisting of all errors from
-    /// [`ParseBuffer::add_error`], if it has been called.
+    /// Returns an error consisting of all errors from [`ParseBuffer::add_error`], if it has been called.
     #[allow(clippy::missing_panics_doc)] // Will not panic.
     pub fn get_error(&self) -> Option<Error> {
         let error = self.error.borrow();
@@ -592,8 +592,7 @@ impl<'a> ParseBuffer<'a> {
         }
     }
 
-    /// Repeatedly skips tokens until `function` returns true or `self` is
-    /// empty.
+    /// Repeatedly skips tokens until `function` returns true or `self` is empty.
     pub fn synchronise<F: FnMut(ParseStream<'_>) -> bool>(&self, mut function: F) {
         while !self.is_empty() && !function(self) {
             let _ = self.next();
@@ -612,6 +611,7 @@ impl<'a> ParseBuffer<'a> {
     /// Parses `T1` and `T2`, with no whitespace allowed between them.
     ///
     /// ## Errors
+    ///
     /// Returns an error if `self` does not start with the required tokens.
     pub fn parse_joint<T1: Token, T2: Token>(&self) -> Result<(T1, T2)> {
         if self.current()?.span().end < self.next()?.span().start {
@@ -628,13 +628,13 @@ impl<'a> ParseBuffer<'a> {
         Ok((t1, t2))
     }
 
-    /// Attempts to parse `self` into `Vec<T>`, with no separating punctuation,
-    /// fully consuming `self`.
+    /// Attempts to parse `self` into `Vec<T>`, with no separating punctuation, fully consuming
+    /// `self`.
     ///
-    /// To parse separated instances of `T`, see
-    /// [Punctuated][punctuated::Punctuated].
+    /// To parse separated instances of `T`, see [Punctuated][punctuated::Punctuated].
     ///
     /// ## Errors
+    ///
     /// Returns an error if `self` is not a valid sequence of `T`.
     pub fn parse_repeated<T: Parse>(&self) -> Result<Vec<T>> {
         let mut items = vec![];
@@ -655,9 +655,9 @@ impl<'a> ParseBuffer<'a> {
 
     /// Returns true if the next token is an instance of `T`.
     ///
-    /// Note that for the purposes of this function, multi-character punctuation
-    /// like `+=` is considered to be two tokens, and float literals are
-    /// considered to be three tokens (start, `.`, end).
+    /// Note that for the purposes of this function, multi-character punctuation like `+=` is
+    /// considered to be two tokens, and float literals are considered to be three tokens
+    /// (start, `.`, end).
     pub fn peek2<T: Peek>(&self, token: T) -> bool {
         let buffer = self.fork();
         let _ = buffer.next();
@@ -742,8 +742,9 @@ impl<'a> ParseBuffer<'a> {
     /// Commits a forked buffer into `self`, updating `self` to reflect `fork`.
     ///
     /// ## Panics
-    /// This function will panic if `fork` wasn't forked from `self` or if
-    /// `self` is further ahead than `fork`.
+    ///
+    /// This function will panic if `fork` wasn't forked from `self` or if `self` is further ahead
+    /// than `fork`.
     pub fn commit(&self, fork: &Self) {
         if !ptr::eq(self.cursor.stream.as_ptr(), fork.cursor.stream.as_ptr()) {
             panic!("cannot commit ParseBuffer that wasn't forked from this buffer");
@@ -753,11 +754,9 @@ impl<'a> ParseBuffer<'a> {
         self.cursor.offset.set(fork.cursor.offset.get());
     }
 
-    /// Creates an error with the message `Unexpected token` and the given
-    /// expected tokens.
+    /// Creates an error with the message `Unexpected token` and the given expected tokens.
     ///
-    /// Use of this function is generally discouraged in favour of
-    /// [`Lookahead::error`].
+    /// Use of this function is generally discouraged in favour of [`Lookahead::error`].
     pub fn unexpected_token(&self, expected: HashSet<String>) -> Error {
         let current = match self.current() {
             Ok(current) => current,
@@ -840,8 +839,7 @@ impl<'a> From<&'a TokenStream> for ParseBuffer<'a> {
     }
 }
 
-/// Returns true if [`ParseBuffer::peek`] would return true for any types
-/// passed.
+/// Returns true if [`ParseBuffer::peek`] would return true for any types passed.
 ///
 /// Accepts a `ParseStream` followed by one or more types.
 #[macro_export]
@@ -851,8 +849,7 @@ macro_rules! peek_any {
     };
 }
 
-/// Returns true if [`ParseBuffer::peek2`] would return true for any types
-/// passed.
+/// Returns true if [`ParseBuffer::peek2`] would return true for any types passed.
 ///
 /// Accepts a `ParseStream` followed by one or more types.
 #[macro_export]
@@ -975,14 +972,13 @@ impl From<SingleCharPunct> for Entry {
 /// The return type of a parsing function.
 pub type Result<T> = result::Result<T, Error>;
 
-/// Attempts to parse a [`TokenStream`] into an implementor of [`Parse`],
-/// producing a compiler error if it fails.
+/// Attempts to parse a [`TokenStream`] into an implementor of [`Parse`], producing a compiler error
+/// if it fails.
 ///
 /// Must be used in a function that returns a type that implements
 /// [`Into<proc_macro::TokenStream>`][tokenstream].
 ///
-/// Note that this macro may not interact well with functions with a generic
-/// return type.
+/// Note that this macro may not interact well with functions with a generic return type.
 ///
 /// [tokenstream]: https://doc.rust-lang.org/stable/proc_macro/struct.TokenStream.html
 #[cfg(feature = "proc-macro")]

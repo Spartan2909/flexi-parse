@@ -93,9 +93,8 @@ pub trait Delimiters: From<Span> {
     type Start: Punct;
     /// The closing delimiter, e.g. `)`.
     type End: Punct;
-    /// Whether groups delimited by this pair can nest. Typically, this will be
-    /// false if the opening and closing delimiters are the same, and true
-    /// otherwise.
+    /// Whether groups delimited by this pair can nest. Typically, this will be false if the opening
+    /// and closing delimiters are the same, and true otherwise.
     const CAN_NEST: bool;
 
     /// The span covered by these delimiters.
@@ -479,8 +478,8 @@ impl<D: Delimiters> Parse for Group<D> {
 
 /// A macro to easily parse a delimited group.
 ///
-/// Similar in concept to [`syn::parenthesized`][parenthesized] and family, but
-/// compatible with anything implementing the [`Delimiters`] trait.
+/// Similar in concept to [`syn::parenthesized`][parenthesized] and family, but compatible with
+/// anything implementing the [`Delimiters`] trait.
 ///
 /// [parenthesized]: https://docs.rs/syn/latest/syn/macro.parenthesized.html
 ///

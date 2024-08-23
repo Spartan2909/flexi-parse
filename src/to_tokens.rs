@@ -1,13 +1,15 @@
 //! A trait for converting types composed of tokens into a [`TokenStream`].
 //!
 //! # The [`ToTokens`] trait
-//! This trait provides a method of converting types into a [`TokenStream`].
-//! This is primarily intended as a means of generating source code from a
-//! syntax tree node.
+//! This trait provides a method of converting types into a [`TokenStream`]. This is primarily
+//! intended as a means of generating source code from a syntax tree node.
 //!
-//! # [`quote`]
-//! The API of this trait intentionally mirrors that of [`quote::ToTokens`],
+//! # [`quote`][quote]
+//! The API of this trait intentionally mirrors that of [`quote::ToTokens`][quote_to_tokens],
 //! and so should be familiar to users of that crate.
+//!
+//! [quote]: https://docs.rs/quote/latest/quote/
+//! [quote_to_tokens]: https://docs.rs/quote/latest/quote/trait.ToTokens.html
 
 use std::sync::Arc;
 
