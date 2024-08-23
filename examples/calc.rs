@@ -13,6 +13,7 @@ use flexi_parse::Result;
 
 use std::env;
 
+#[allow(dead_code)]
 enum Expr {
     Num(f64),
     Neg(Punct!["-"], Box<Expr>),

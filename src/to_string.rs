@@ -34,11 +34,11 @@ impl fmt::Display for TokenStream {
                     format!("'{}'", str.string())
                 }
             };
-            for _ in last_token_end..this_token_span.start {
+            for _ in last_token_end..this_token_span.start() {
                 write!(f, " ")?;
             }
             write!(f, "{string}")?;
-            last_token_end = this_token_span.end;
+            last_token_end = this_token_span.end();
         }
 
         Ok(())

@@ -53,12 +53,13 @@ fn literals() {
 #[test]
 const fn send_sync_types() {
     const fn assert_send_sync<T: Send + Sync>() {}
+    const fn assert_send<T: Send>() {}
 
-    assert_send_sync::<ParseBuffer>();
+    assert_send::<ParseBuffer>();
     assert_send_sync::<Span>();
     assert_send_sync::<Ident>();
     assert_send_sync::<Group<Parentheses>>();
     assert_send_sync::<Punctuated<Ident, Punct![","]>>();
-    assert_send_sync::<Lookahead>();
+    assert_send::<Lookahead>();
     assert_send_sync::<Error>();
 }

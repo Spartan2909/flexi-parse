@@ -158,7 +158,11 @@ fn str_to_tokens(string: &str, span: &Span, delimiter: PunctKind, tokens: &mut T
             source: _,
         },
         _,
-    ) = scanner::scan(Arc::clone(&span.source), span.start + 1, Some(span.end - 1));
+    ) = scanner::scan(
+        Arc::clone(&span.source),
+        (span.start + 1) as usize,
+        Some((span.end - 1) as usize),
+    );
     tokens.tokens.append(&mut new_tokens);
 
     let end_span = Span::new(span.end - 1, span.end, Arc::clone(&span.source));
@@ -236,23 +240,39 @@ impl ToTokens for LitInt {
     }
 }
 
+#[allow(clippy::cast_sign_loss)]
+#[allow(clippy::while_float)]
+fn fract_part(value: f64) -> u64 {
+    let eps = 1e-4;
+    let mut value = value.abs().fract();
+    if value == 0.0 {
+        return 0;
+    }
+
+    while (value.round() - value).abs() <= eps {
+        value *= 10.0;
+    }
+
+    while (value.round() - value).abs() > eps {
+        value *= 10.0;
+    }
+
+    value.round() as u64
+}
+
 impl ToTokens for LitFloat {
     #[allow(clippy::cast_sign_loss)] // There are no signed literals.
     fn to_tokens(&self, tokens: &mut TokenStream) {
         debug_assert!(self.value() >= 0.0, "literals must not be signed");
         let start = (self.value() - self.value().fract()).floor() as u64;
         let num_start_digits = start.checked_ilog10().unwrap_or(0) + 1;
-        let mut fract = self.value().fract();
-        while fract.fract() != 0.0 {
-            fract *= 10.0;
-        }
-        let end = fract as u64;
-        let num_end_digits = end.checked_ilog10().unwrap_or(0) + 1;
+        let fract = fract_part(self.value().fract());
+        let num_end_digits = fract.checked_ilog10().unwrap_or(0) + 1;
         tokens.push(Entry::Ident(Ident::new(
             start.to_string(),
             Span::new(
                 self.span().start,
-                self.span().start + num_start_digits as usize,
+                self.span().start + num_start_digits,
                 Arc::clone(&self.span().source),
             ),
         )));
@@ -260,15 +280,15 @@ impl ToTokens for LitFloat {
             PunctKind::Dot,
             Spacing::Alone,
             Span::new(
-                num_start_digits as usize,
-                num_start_digits as usize + 1,
+                num_start_digits,
+                num_start_digits + 1,
                 Arc::clone(&self.span().source),
             ),
         )));
         tokens.push(Entry::Ident(Ident::new(
-            end.to_string(),
+            fract.to_string(),
             Span::new(
-                self.span().end - num_end_digits as usize,
+                self.span().end - num_end_digits,
                 self.span().end,
                 Arc::clone(&self.span().source),
             ),

@@ -69,7 +69,7 @@ impl Scanner {
                 }
                 self.current += 1;
 
-                let span = Span::new(start, self.current, Arc::clone(&self.source));
+                let span = Span::try_new(start, self.current, Arc::clone(&self.source)).unwrap();
 
                 Entry::LitStrDoubleQuote(LitStrDoubleQuote::new(buf, span))
             }
@@ -84,13 +84,14 @@ impl Scanner {
                 }
                 self.current += 1;
 
-                let span = Span::new(start, self.current, Arc::clone(&self.source));
+                let span = Span::try_new(start, self.current, Arc::clone(&self.source)).unwrap();
 
                 Entry::LitStrSingleQuote(LitStrSingleQuote::new(buf, span))
             }
             c if PunctKind::try_from(c).is_ok() => {
                 let kind = c.try_into().unwrap();
-                let span = Span::new(self.current, self.current + 1, Arc::clone(&self.source));
+                let span = Span::try_new(self.current, self.current + 1, Arc::clone(&self.source))
+                    .unwrap();
                 self.current += 1;
                 let spacing = if self.peek(0).is_ok_and(|c| PunctKind::try_from(c).is_ok()) {
                     Spacing::Joint
@@ -109,15 +110,16 @@ impl Scanner {
                 while valid_ident_char(self.peek(0).ok()) {
                     self.current += 1;
                 }
-                let string = self.source.contents[start..self.current].to_string();
-                let span = Span::new(start, self.current, Arc::clone(&self.source));
+                let string = self.source.contents()[start..self.current].to_string();
+                let span = Span::try_new(start, self.current, Arc::clone(&self.source)).unwrap();
 
                 Entry::Ident(Ident { string, span })
             }
             ' ' if self.peek(1).is_ok_and(|c| c == ' ') => {
                 self.current += 2;
                 Entry::WhiteSpace(WhiteSpace::Space2(Space2 {
-                    span: Span::new(self.current - 2, self.current, Arc::clone(&self.source)),
+                    span: Span::try_new(self.current - 2, self.current, Arc::clone(&self.source))
+                        .unwrap(),
                 }))
             }
             ' ' => {
@@ -125,17 +127,20 @@ impl Scanner {
                 return Ok(None);
             }
             '\t' => {
-                let span = Span::new(self.current, self.current + 1, Arc::clone(&self.source));
+                let span = Span::try_new(self.current, self.current + 1, Arc::clone(&self.source))
+                    .unwrap();
                 self.current += 1;
                 Entry::WhiteSpace(WhiteSpace::Tab(Tab { span }))
             }
             '\n' => {
-                let span = Span::new(self.current, self.current + 1, Arc::clone(&self.source));
+                let span = Span::try_new(self.current, self.current + 1, Arc::clone(&self.source))
+                    .unwrap();
                 self.current += 1;
                 Entry::WhiteSpace(WhiteSpace::NewLine(NewLine { span }))
             }
             '\u{000D}' => {
-                let span = Span::new(self.current, self.current + 1, Arc::clone(&self.source));
+                let span = Span::try_new(self.current, self.current + 1, Arc::clone(&self.source))
+                    .unwrap();
                 self.current += 1;
                 Entry::WhiteSpace(WhiteSpace::CarriageReturn(CarriageReturn { span }))
             }
@@ -143,11 +148,10 @@ impl Scanner {
                 self.current += 1;
                 return Err(Error::new(
                     Arc::clone(&self.source),
-                    ErrorKind::UnknownCharacter(Span::new(
-                        self.current,
-                        self.current + 1,
-                        Arc::clone(&self.source),
-                    )),
+                    ErrorKind::UnknownCharacter(
+                        Span::try_new(self.current, self.current + 1, Arc::clone(&self.source))
+                            .unwrap(),
+                    ),
                 ));
             }
         };
@@ -155,15 +159,15 @@ impl Scanner {
         Ok(Some(token))
     }
 
-    fn peek(&mut self, offset: usize) -> Result<char> {
-        if self.current + offset >= self.source.contents.len() {
+    fn peek(&self, offset: usize) -> Result<char> {
+        if self.current + offset >= self.source.contents().len() {
             Err(Error::new(
                 Arc::clone(&self.source),
-                ErrorKind::EndOfFile(self.source.contents.len()),
+                ErrorKind::EndOfFile(self.source.contents().len()),
             ))
         } else {
             Ok(
-                self.source.contents[self.current + offset..=self.current + offset]
+                self.source.contents()[self.current + offset..=self.current + offset]
                     .chars()
                     .next()
                     .unwrap(),
@@ -171,7 +175,7 @@ impl Scanner {
         }
     }
 
-    fn is_at_end(&mut self) -> bool {
+    const fn is_at_end(&self) -> bool {
         self.current >= self.end
     }
 }
@@ -183,7 +187,7 @@ pub(crate) fn scan(
 ) -> (TokenStream, Option<Error>) {
     let (tokens, errors) = Scanner {
         current: start,
-        end: end.unwrap_or(source.contents.len()),
+        end: end.unwrap_or_else(|| source.contents().len()),
         errors: Error::empty(),
         source,
     }

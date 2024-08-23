@@ -126,8 +126,8 @@ impl Parse for LitStrDoubleQuote {
             err
         })?;
         let (start, end) = (start.span(), end.span());
-        let string = input.source.contents[start.end..end.start].to_owned();
-        let span = Span::across(start, end);
+        let string = input.source.contents()[start.end()..end.start()].to_owned();
+        let span = Span::across(start, end).unwrap();
         Ok(LitStrDoubleQuote { string, span })
     }
 }
@@ -214,8 +214,8 @@ impl Parse for LitStrSingleQuote {
             err
         })?;
         let (start, end) = (start.span(), end.span());
-        let string = input.source.contents[start.end..end.start].to_owned();
-        let span = Span::across(start, end);
+        let string = input.source.contents()[start.end()..end.start()].to_owned();
+        let span = Span::across(start, end).unwrap();
         Ok(LitStrSingleQuote { string, span })
     }
 }
@@ -644,13 +644,9 @@ impl Token for LitInt {
     }
 }
 
-#[allow(clippy::cast_precision_loss)] // Should probably warn on this.
 fn int_to_decimal(int: u64) -> f64 {
-    let mut value = int as f64;
-    while value >= 1.0 {
-        value /= 10.0;
-    }
-    value
+    // FIXME: This is horrendous
+    format!("0.{int}").parse().unwrap()
 }
 
 #[doc(hidden)]
@@ -836,7 +832,7 @@ macro_rules! tokens {
                 }
             }
 
-            #[cfg(feature = "quote")]
+            #[cfg(feature = "proc-macro2")]
             impl quote::ToTokens for $t1 {
                 fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
                     use quote::TokenStreamExt as _;
@@ -1002,7 +998,7 @@ macro_rules! tokens {
                 }
             }
 
-            #[cfg(feature = "quote")]
+            #[cfg(feature = "proc-macro2")]
             impl quote::ToTokens for $t2 {
                 fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
                     use quote::TokenStreamExt as _;
@@ -1160,7 +1156,7 @@ macro_rules! tokens {
                 }
             }
 
-            #[cfg(feature = "quote")]
+            #[cfg(feature = "proc-macro2")]
             impl quote::ToTokens for $t3 {
                 fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
                     use quote::TokenStreamExt as _;
@@ -1212,7 +1208,7 @@ tokens! {
         (Pipe, '|')
         (Ampersand, '&')
         (Tilde, '~')
-        (Tilde2, '¬')
+        (Negate, '¬')
         (Backslash, '\\')
         (Question, '?')
         (Hash, '#')
@@ -1449,7 +1445,7 @@ impl Space4 {
             return Err(Error::empty());
         }
         Ok(Space4 {
-            span: Span::across(start.span(), end.span()),
+            span: Span::across(start.span(), end.span()).unwrap(),
         })
     }
 }

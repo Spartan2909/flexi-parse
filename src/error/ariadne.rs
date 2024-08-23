@@ -2,12 +2,13 @@ use crate::error::unexpected_token_message;
 use crate::error::Error;
 use crate::error::ErrorKind;
 use crate::error::SingleError;
-use crate::SourceFile;
+use crate::SourceCache;
+use crate::SourceId;
 use crate::Span;
+use crate::SOURCE_CACHE;
 
 use std::io;
 use std::io::Write;
-use std::sync::Arc;
 
 use ariadne::Color;
 use ariadne::Label;
@@ -15,18 +16,18 @@ use ariadne::ReportKind;
 use ariadne::Source;
 
 impl ariadne::Span for Span {
-    type SourceId = String;
+    type SourceId = SourceId;
 
     fn source(&self) -> &Self::SourceId {
         self.source.id()
     }
 
     fn start(&self) -> usize {
-        self.start
+        self.start()
     }
 
     fn end(&self) -> usize {
-        self.end
+        self.end()
     }
 }
 
@@ -46,6 +47,19 @@ impl From<&ErrorKind> for ReportKind<'static> {
     }
 }
 
+impl ariadne::Cache<SourceId> for &SourceCache {
+    fn fetch(&mut self, id: &SourceId) -> Result<&Source, Box<dyn std::fmt::Debug + '_>> {
+        self.sources
+            .get(id)
+            .ok_or_else(|| unreachable!())
+            .map(|source| &source.ariadne_source)
+    }
+
+    fn display<'a>(&self, id: &'a SourceId) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(self.sources.get(id)?.file.name().into_owned()))
+    }
+}
+
 /// A reported error, ready to be written to stderr.
 ///
 /// This type exposes a very similar API to [`ariadne::Report`].
@@ -54,7 +68,6 @@ impl From<&ErrorKind> for ReportKind<'static> {
 /// [`Error::eprint`] method will suffice.
 pub struct Report {
     report: ariadne::Report<'static, Span>,
-    source: Arc<SourceFile>,
 }
 
 impl Report {
@@ -63,15 +76,11 @@ impl Report {
     /// For more details, see [`ariadne::Report::write`].
     ///
     /// ## Errors
+    ///
     /// Forwards any errors from `W::write`.
+    #[allow(clippy::missing_panics_doc)]
     pub fn write<W: Write>(&self, w: W) -> io::Result<()> {
-        self.report.write(
-            (
-                self.source.id().to_owned(),
-                Source::from(&self.source.contents),
-            ),
-            w,
-        )
+        self.report.write(&*SOURCE_CACHE.read().unwrap(), w)
     }
 
     /// Writes this diagnostic to an implementor of [`Write`].
@@ -79,15 +88,12 @@ impl Report {
     /// For more details, see [`ariadne::Report::write_for_stdout`].
     ///
     /// ## Errors
+    ///
     /// Forwards any errors from `W::write`.
+    #[allow(clippy::missing_panics_doc)]
     pub fn write_for_stdout<W: Write>(&self, w: W) -> io::Result<()> {
-        self.report.write_for_stdout(
-            (
-                self.source.id().to_owned(),
-                Source::from(&self.source.contents),
-            ),
-            w,
-        )
+        self.report
+            .write_for_stdout(&*SOURCE_CACHE.read().unwrap(), w)
     }
 
     /// Prints this diagnostic to stderr.
@@ -95,12 +101,11 @@ impl Report {
     /// For more details, see [`ariadne::Report::eprint`].
     ///
     /// ## Errors
+    ///
     /// Returns an error if writing to stderr fails.
+    #[allow(clippy::missing_panics_doc)]
     pub fn eprint(&self) -> io::Result<()> {
-        self.report.eprint((
-            self.source.id().to_owned(),
-            Source::from(&self.source.contents),
-        ))
+        self.report.eprint(&*SOURCE_CACHE.read().unwrap())
     }
 
     /// Prints this diagnostic to stdout. In most cases, [`Report::eprint`] is
@@ -109,19 +114,18 @@ impl Report {
     /// For more details, see [`ariadne::Report::print`].
     ///
     /// ## Errors
+    ///
     /// Returns an error if writing to stdout fails.
+    #[allow(clippy::missing_panics_doc)]
     pub fn print(&self) -> io::Result<()> {
-        self.report.print((
-            self.source.id().to_owned(),
-            Source::from(&self.source.contents),
-        ))
+        self.report.print(&*SOURCE_CACHE.read().unwrap())
     }
 }
 
 impl From<&SingleError> for Report {
     fn from(value: &SingleError) -> Self {
         let mut builder =
-            ariadne::Report::build((&value.kind).into(), value.source.id(), value.kind.start())
+            ariadne::Report::build((&value.kind).into(), *value.source.id(), value.kind.start())
                 .with_code(value.kind.code());
         match &value.kind {
             ErrorKind::Silent => unreachable!("attempted to print silent error"),
@@ -159,9 +163,9 @@ impl From<&SingleError> for Report {
             }
             ErrorKind::EndOfFile(_) => builder.set_message("Unexpected end of file while parsing"),
         }
+
         Report {
             report: builder.finish(),
-            source: Arc::clone(&value.source),
         }
     }
 }

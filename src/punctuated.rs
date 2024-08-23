@@ -202,6 +202,24 @@ impl<T, P: Punct> IntoIterator for Punctuated<T, P> {
     }
 }
 
+impl<'a, T, P: Punct> IntoIterator for &'a Punctuated<T, P> {
+    type Item = &'a T;
+    type IntoIter = Iter<'a, T, P>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a, T, P: Punct> IntoIterator for &'a mut Punctuated<T, P> {
+    type Item = &'a mut T;
+    type IntoIter = IterMut<'a, T, P>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
+}
+
 /// An iterator over `&T`.
 pub struct Iter<'a, T, P> {
     main: slice::Iter<'a, (T, P)>,

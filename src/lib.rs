@@ -4,20 +4,26 @@
 
 #![cfg_attr(all(doc, not(doctest)), feature(doc_auto_cfg))]
 
+#[cfg(target_pointer_width = "16")]
+compile_error!("targets with 16-bit pointers are not supported");
+
 use std::borrow::Cow;
+use std::cell::Cell;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 use std::fs;
 use std::io;
 use std::iter::Extend;
-use std::path::Path;
+use std::path::PathBuf;
 use std::ptr;
 use std::result;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::OnceLock;
+use std::sync::LazyLock;
+use std::sync::RwLock;
 
 pub mod error;
 use error::Error;
@@ -51,25 +57,87 @@ mod proc_macro;
 #[cfg(feature = "proc-macro2")]
 pub use proc_macro::ToTokensWrapper;
 
-fn default_source_file<'a>() -> &'a Arc<SourceFile> {
-    static DEFAULT_SOURCE_FILE: OnceLock<Arc<SourceFile>> = OnceLock::new();
-    DEFAULT_SOURCE_FILE.get_or_init(|| {
-        Arc::new(SourceFile {
-            name: String::new(),
-            path: None,
-            contents: String::new(),
-        })
-    })
+static DEFAULT_SOURCE_FILE: LazyLock<Arc<SourceFile>> =
+    LazyLock::new(|| SOURCE_CACHE.write().unwrap().insert(SourceFileInner::Dummy));
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum SourceFileInner {
+    Named { name: String, contents: String },
+    Path { path: PathBuf, contents: String },
+    Dummy,
 }
+
+impl SourceFileInner {
+    fn contents(&self) -> &str {
+        match self {
+            SourceFileInner::Named { name: _, contents }
+            | SourceFileInner::Path { path: _, contents } => contents,
+            SourceFileInner::Dummy => "",
+        }
+    }
+}
+
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SourceId(u32);
+
+impl SourceId {
+    fn new() -> SourceId {
+        static NEXT: AtomicU32 = AtomicU32::new(0);
+
+        let id = NEXT.fetch_add(1, Ordering::Relaxed);
+        SourceId(id)
+    }
+}
+
+struct Source {
+    file: Arc<SourceFile>,
+    #[cfg(feature = "ariadne")]
+    ariadne_source: ariadne::Source,
+}
+
+impl Source {
+    fn new(source: Arc<SourceFile>) -> Source {
+        Source {
+            #[cfg(feature = "ariadne")]
+            ariadne_source: source.contents().into(),
+            file: source,
+        }
+    }
+}
+
+struct SourceCache {
+    #[cfg(feature = "ariadne")]
+    sources: HashMap<SourceId, Source>,
+}
+
+impl SourceCache {
+    fn new() -> SourceCache {
+        SourceCache {
+            #[cfg(feature = "ariadne")]
+            sources: HashMap::new(),
+        }
+    }
+
+    fn insert(&mut self, source: SourceFileInner) -> Arc<SourceFile> {
+        let id = SourceId::new();
+        let source_file = Arc::new(SourceFile { inner: source, id });
+        let source = Source::new(Arc::clone(&source_file));
+        self.sources.insert(id, source);
+        source_file
+    }
+}
+
+static SOURCE_CACHE: LazyLock<RwLock<SourceCache>> =
+    LazyLock::new(|| RwLock::new(SourceCache::new()));
 
 /// A struct representing a file of source code.
 ///
 /// This type is the input to [`parse_source`].
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SourceFile {
-    name: String,
-    path: Option<String>,
-    contents: String,
+    inner: SourceFileInner,
+    id: SourceId,
 }
 
 impl SourceFile {
@@ -77,40 +145,71 @@ impl SourceFile {
     ///
     /// ## Errors
     /// This function returns an error if the given path is not readable.
-    pub fn read(path: &Path) -> io::Result<SourceFile> {
-        let name = path
-            .file_name()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid filename"))?
-            .to_string_lossy()
-            .into_owned();
-        let contents = fs::read_to_string(path)?;
+    pub fn read(path: PathBuf) -> io::Result<SourceFile> {
+        let contents = fs::read_to_string(&path)?;
         Ok(SourceFile {
-            name,
-            path: Some(path.to_string_lossy().into_owned()),
-            contents,
+            inner: SourceFileInner::Path { path, contents },
+            id: SourceId::new(),
         })
     }
 
     /// Creates a new `SourceFile` with the given name and contents.
-    pub const fn new(name: String, contents: String) -> SourceFile {
+    pub fn new(name: String, contents: String) -> SourceFile {
         SourceFile {
-            name,
-            path: None,
-            contents,
+            inner: SourceFileInner::Named { name, contents },
+            id: SourceId::new(),
         }
     }
 
-    fn id(&self) -> &String {
-        self.path.as_ref().unwrap_or(&self.name)
+    const fn id(&self) -> &SourceId {
+        &self.id
+    }
+
+    fn contents(&self) -> &str {
+        self.inner.contents()
+    }
+
+    fn merge<'a>(
+        self: &'a Arc<SourceFile>,
+        other: &'a Arc<SourceFile>,
+    ) -> Option<&'a Arc<SourceFile>> {
+        if self.inner == SourceFileInner::Dummy {
+            Some(other)
+        } else if self.inner == other.inner {
+            Some(self)
+        } else {
+            None
+        }
+    }
+
+    fn name(&self) -> Cow<str> {
+        match &self.inner {
+            SourceFileInner::Named { name, contents: _ } => Cow::Borrowed(name),
+            SourceFileInner::Path { path, contents: _ } => path.to_string_lossy(),
+            SourceFileInner::Dummy => Cow::Borrowed("<none>"),
+        }
     }
 }
 
 impl fmt::Debug for SourceFile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SourceFile")
-            .field("name", &self.name)
-            .field("path", &self.path)
-            .finish_non_exhaustive()
+        match self.inner {
+            SourceFileInner::Named {
+                ref name,
+                contents: _,
+            } => f
+                .debug_struct("SourceFile")
+                .field("name", name)
+                .finish_non_exhaustive(),
+            SourceFileInner::Path {
+                ref path,
+                contents: _,
+            } => f
+                .debug_struct("SourceFile")
+                .field("path", path)
+                .finish_non_exhaustive(),
+            SourceFileInner::Dummy => f.debug_struct("SourceFile").finish_non_exhaustive(),
+        }
     }
 }
 
@@ -122,14 +221,22 @@ impl fmt::Debug for SourceFile {
 /// [`proc_macro::Span`]: https://doc.rust-lang.org/stable/proc_macro/struct.Span.html
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Span {
-    start: usize,
-    end: usize,
+    start: u32,
+    end: u32,
     source: Arc<SourceFile>,
 }
 
 impl Span {
-    const fn new(start: usize, end: usize, source: Arc<SourceFile>) -> Span {
+    const fn new(start: u32, end: u32, source: Arc<SourceFile>) -> Span {
         Span { start, end, source }
+    }
+
+    fn try_new(start: usize, end: usize, source: Arc<SourceFile>) -> Option<Span> {
+        Some(Span {
+            start: start.try_into().ok()?,
+            end: end.try_into().ok()?,
+            source,
+        })
     }
 
     /// Create a new [`Span`] covering no tokens.
@@ -140,54 +247,45 @@ impl Span {
         Span {
             start: 0,
             end: 0,
-            source: Arc::clone(default_source_file()),
+            source: Arc::clone(&DEFAULT_SOURCE_FILE),
         }
+    }
+
+    const fn start(&self) -> usize {
+        self.start as usize
+    }
+
+    const fn end(&self) -> usize {
+        self.end as usize
     }
 
     /// Create a new [`Span`] from the start of `start` to the end of `end`.
     ///
-    /// ## Panics
-    /// This function will panic if `start` and `end` come from different source
-    /// files and neither of them .
-    pub fn across(start: &Span, end: &Span) -> Span {
-        if &start.source == default_source_file() {
-            Span {
-                start: start.start,
-                end: end.end,
-                source: Arc::clone(&end.source),
-            }
-        } else {
-            assert_eq!(
-                start.source, end.source,
-                "both inputs to `across` must come from the same source file"
-            );
-            Span {
-                start: start.start,
-                end: end.end,
-                source: Arc::clone(&start.source),
-            }
-        }
-    }
-
-    #[doc(hidden)]
-    pub const fn source(&self) -> &Arc<SourceFile> {
-        &self.source
+    /// [`None`] is returned if `start` and `end` come from different sources and neither of them
+    /// was obtained from [`Span::empty`].
+    pub fn across(start: &Span, end: &Span) -> Option<Span> {
+        let source = Arc::clone(start.source.merge(&end.source)?);
+        Some(Span {
+            start: start.start,
+            end: end.end,
+            source,
+        })
     }
 
     /// Returns the start line and start column.
     fn start_location(&self) -> (usize, usize) {
-        let (newlines, last_newline) = self.source.contents[..self.start].chars().enumerate().fold(
-            (0, 0),
-            |(newlines, last_newline), (index, ch)| {
+        let (newlines, last_newline) = self.source.contents()[..self.start()]
+            .chars()
+            .enumerate()
+            .fold((0, 0), |(newlines, last_newline), (index, ch)| {
                 if ch == '\n' {
                     (newlines + 1, index)
                 } else {
                     (newlines, last_newline)
                 }
-            },
-        );
+            });
 
-        (newlines + 1, self.start - last_newline + 1)
+        (newlines + 1, self.start() - last_newline + 1)
     }
 
     /// Returns true if `self` covers no tokens.
@@ -231,7 +329,7 @@ impl<F: FnOnce(ParseStream) -> Result<T>, T> Parser for F {
     fn parse(self, tokens: TokenStream) -> Result<Self::Output> {
         let cursor = Cursor {
             stream: Cow::Borrowed(tokens.tokens.as_slice()),
-            offset: AtomicUsize::new(0),
+            offset: Cell::new(0),
             len: tokens.tokens.len(),
         };
         self(&ParseBuffer::new(
@@ -280,9 +378,11 @@ pub fn parse_source<T: Parse>(source: Arc<SourceFile>) -> Result<T> {
 /// Forwards any errors from `T::parse`.
 pub fn parse_string<T: Parse>(source: String) -> Result<T> {
     let source = Arc::new(SourceFile {
-        name: "str".to_string(),
-        path: None,
-        contents: source,
+        inner: SourceFileInner::Named {
+            name: "<string input>".to_string(),
+            contents: source,
+        },
+        id: SourceId::new(),
     });
     parse_source(source)
 }
@@ -359,7 +459,7 @@ impl TokenStream {
                 _ => post_newline = false,
             }
             true
-        })
+        });
     }
 
     /// Removes all non-newline whitespace from `self`.
@@ -435,7 +535,7 @@ pub fn new_error<L: Into<Span>>(message: String, location: L, code: u16) -> Erro
 pub struct ParseBuffer<'a> {
     cursor: Cursor<'a>,
     source: Arc<SourceFile>,
-    error: Mutex<Error>,
+    error: RefCell<Error>,
 }
 
 impl<'a> ParseBuffer<'a> {
@@ -443,7 +543,7 @@ impl<'a> ParseBuffer<'a> {
         ParseBuffer {
             cursor,
             source,
-            error: Mutex::new(Error::empty()),
+            error: RefCell::new(Error::empty()),
         }
     }
 
@@ -477,14 +577,14 @@ impl<'a> ParseBuffer<'a> {
     /// Adds a new error to this buffer's storage.
     #[allow(clippy::missing_panics_doc)] // Will not panic.
     pub fn add_error(&self, error: Error) {
-        self.error.lock().unwrap().add(error);
+        self.error.borrow_mut().add(error);
     }
 
     /// Returns an error consisting of all errors from
     /// [`ParseBuffer::add_error`], if it has been called.
     #[allow(clippy::missing_panics_doc)] // Will not panic.
     pub fn get_error(&self) -> Option<Error> {
-        let error = self.error.lock().unwrap();
+        let error = self.error.borrow();
         if error.is_empty() {
             None
         } else {
@@ -502,9 +602,9 @@ impl<'a> ParseBuffer<'a> {
     }
 
     fn try_parse<T: Parse>(&self) -> Result<T> {
-        let offset = self.cursor.offset.load(Ordering::SeqCst);
+        let offset = self.cursor.offset.get();
         T::parse(self).map_err(move |err| {
-            self.cursor.offset.store(offset, Ordering::SeqCst);
+            self.cursor.offset.set(offset);
             err
         })
     }
@@ -565,9 +665,9 @@ impl<'a> ParseBuffer<'a> {
     }
 
     fn parse_undo<T: Parse>(&self) -> Result<T> {
-        let offset = self.cursor.offset.load(Ordering::SeqCst);
+        let offset = self.cursor.offset.get();
         let val = T::parse(self);
-        self.cursor.offset.store(offset, Ordering::SeqCst);
+        self.cursor.offset.set(offset);
         val
     }
 
@@ -593,7 +693,7 @@ impl<'a> ParseBuffer<'a> {
             || {
                 Err(Error::new(
                     Arc::clone(&self.source),
-                    ErrorKind::EndOfFile(self.source.contents.len()),
+                    ErrorKind::EndOfFile(self.source.contents().len()),
                 ))
             },
             Ok,
@@ -609,7 +709,7 @@ impl<'a> ParseBuffer<'a> {
         if self.cursor.eof() {
             Err(Error::new(
                 Arc::clone(&self.source),
-                ErrorKind::EndOfFile(self.source.contents.len()),
+                ErrorKind::EndOfFile(self.source.contents().len()),
             ))
         } else {
             Ok(self.cursor.current())
@@ -627,7 +727,7 @@ impl<'a> ParseBuffer<'a> {
     fn get_relative(&'a self, offset: isize) -> Result<&'a Entry> {
         self.cursor.get_relative(offset).ok_or(Error::new(
             Arc::clone(&self.source),
-            ErrorKind::EndOfFile(self.source.contents.len()),
+            ErrorKind::EndOfFile(self.source.contents().len()),
         ))
     }
 
@@ -647,14 +747,10 @@ impl<'a> ParseBuffer<'a> {
     pub fn commit(&self, fork: &Self) {
         if !ptr::eq(self.cursor.stream.as_ptr(), fork.cursor.stream.as_ptr()) {
             panic!("cannot commit ParseBuffer that wasn't forked from this buffer");
-        } else if fork.cursor.offset.load(Ordering::SeqCst)
-            < self.cursor.offset.load(Ordering::SeqCst)
-        {
+        } else if fork.cursor.offset.get() < self.cursor.offset.get() {
             panic!("cannot commit original ParseBuffer into fork");
         }
-        self.cursor
-            .offset
-            .store(fork.cursor.offset.load(Ordering::SeqCst), Ordering::SeqCst);
+        self.cursor.offset.set(fork.cursor.offset.get());
     }
 
     /// Creates an error with the message `Unexpected token` and the given
@@ -708,10 +804,7 @@ impl<'a> ParseBuffer<'a> {
 impl fmt::Debug for ParseBuffer<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ParseBuffer")
-            .field(
-                "tokens",
-                &&self.cursor.stream[self.cursor.offset.load(Ordering::SeqCst)..],
-            )
+            .field("tokens", &&self.cursor.stream[self.cursor.offset.get()..])
             .field("source", &self.source)
             .field("error", &self.error)
             .finish()
@@ -723,14 +816,14 @@ impl<'a> From<TokenStream> for ParseBuffer<'a> {
         let len = value.tokens.len();
         let cursor = Cursor {
             stream: Cow::Owned(value.tokens),
-            offset: AtomicUsize::new(0),
+            offset: Cell::new(0),
             len,
         };
         ParseBuffer::new(
             cursor,
             value
                 .source
-                .unwrap_or_else(|| Arc::clone(default_source_file())),
+                .unwrap_or_else(|| Arc::clone(&DEFAULT_SOURCE_FILE)),
         )
     }
 }
@@ -739,10 +832,10 @@ impl<'a> From<&'a TokenStream> for ParseBuffer<'a> {
     fn from(value: &'a TokenStream) -> Self {
         let cursor = Cursor {
             stream: Cow::Borrowed(&value.tokens),
-            offset: AtomicUsize::new(0),
+            offset: Cell::new(0),
             len: value.tokens.len(),
         };
-        let source = Arc::clone(value.source.as_ref().unwrap_or_else(default_source_file));
+        let source = Arc::clone(value.source.as_ref().unwrap_or(&DEFAULT_SOURCE_FILE));
         ParseBuffer::new(cursor, source)
     }
 }
@@ -775,13 +868,13 @@ pub type ParseStream<'a> = &'a ParseBuffer<'a>;
 #[derive(Debug)]
 struct Cursor<'a> {
     stream: Cow<'a, [Entry]>,
-    offset: AtomicUsize,
+    offset: Cell<usize>,
     len: usize,
 }
 
 impl<'a> Cursor<'a> {
     fn bump(&self) -> Option<usize> {
-        let offset = self.offset.load(Ordering::SeqCst);
+        let offset = self.offset.get();
         if self.eof() {
             None
         } else {
@@ -790,23 +883,23 @@ impl<'a> Cursor<'a> {
     }
 
     fn current(&'a self) -> &'a Entry {
-        &self.stream[self.offset.load(Ordering::SeqCst)]
+        &self.stream[self.offset.get()]
     }
 
     pub fn eof(&self) -> bool {
-        self.offset.load(Ordering::SeqCst) == self.len
+        self.offset.get() == self.len
     }
 
     fn next(&'a self) -> Option<&'a Entry> {
         self.bump().map(|next| {
             let token = self.current();
-            self.offset.store(next, Ordering::SeqCst);
+            self.offset.set(next);
             token
         })
     }
 
     fn get_relative(&'a self, offset: isize) -> Option<&'a Entry> {
-        let current_offset = self.offset.load(Ordering::SeqCst);
+        let current_offset = self.offset.get();
         let index = if offset < 0 {
             current_offset - offset.unsigned_abs()
         } else {
@@ -820,7 +913,7 @@ impl<'a> Clone for Cursor<'a> {
     fn clone(&self) -> Self {
         Cursor {
             stream: self.stream.clone(),
-            offset: AtomicUsize::new(self.offset.load(Ordering::SeqCst)),
+            offset: Cell::new(self.offset.get()),
             len: self.len,
         }
     }

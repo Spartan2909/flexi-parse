@@ -68,7 +68,7 @@ impl ErrorKind {
             | ErrorKind::UnterminatedChar(span)
             | ErrorKind::LongChar(span)
             | ErrorKind::UnterminatedString(span)
-            | ErrorKind::UnexpectedToken { span, .. } => span.start,
+            | ErrorKind::UnexpectedToken { span, .. } => span.start(),
             ErrorKind::EndOfFile(n) => *n,
         }
     }
@@ -190,12 +190,13 @@ impl Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for error in &self.errors {
+            let file_name = error.source.name();
             match &error.kind {
                 ErrorKind::Silent => {}
                 ErrorKind::Custom { message, span, .. } => {
                     writeln!(f, "[E{:02}] Error: {}", error.kind.code(), message)?;
                     let (line, col) = span.start_location();
-                    write!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
+                    write!(f, "[{file_name}:{line}:{col}]")?;
                 }
                 ErrorKind::UnknownCharacter(span) => {
                     writeln!(
@@ -204,7 +205,7 @@ impl fmt::Display for Error {
                         error.kind.code()
                     )?;
                     let (line, col) = span.start_location();
-                    write!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
+                    write!(f, "[{file_name}:{line}:{col}]")?;
                 }
                 ErrorKind::UnterminatedGroup { start, span } => {
                     writeln!(
@@ -214,7 +215,7 @@ impl fmt::Display for Error {
                         start
                     )?;
                     let (line, col) = span.start_location();
-                    write!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
+                    write!(f, "[{file_name}:{line}:{col}]")?;
                 }
                 ErrorKind::UnterminatedChar(span) => {
                     writeln!(
@@ -223,7 +224,7 @@ impl fmt::Display for Error {
                         error.kind.code()
                     )?;
                     let (line, col) = span.start_location();
-                    write!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
+                    write!(f, "[{file_name}:{line}:{col}]")?;
                 }
                 ErrorKind::LongChar(span) => {
                     writeln!(
@@ -232,7 +233,7 @@ impl fmt::Display for Error {
                         error.kind.code()
                     )?;
                     let (line, col) = span.start_location();
-                    write!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
+                    write!(f, "[{file_name}:{line}:{col}]")?;
                 }
                 ErrorKind::UnterminatedString(span) => {
                     writeln!(
@@ -241,12 +242,12 @@ impl fmt::Display for Error {
                         error.kind.code()
                     )?;
                     let (line, col) = span.start_location();
-                    write!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
+                    write!(f, "[{file_name}:{line}:{col}]")?;
                 }
                 ErrorKind::UnexpectedToken { expected, span } => {
                     writeln!(f, "[E{:02}] Error: Unexpected token", error.kind.code())?;
                     let (line, col) = span.start_location();
-                    writeln!(f, "[{}:{}:{}]", error.source.id(), line, col)?;
+                    writeln!(f, "[{file_name}:{line}:{col}]")?;
                     write!(f, "{}", unexpected_token_message(expected))?;
                 }
                 ErrorKind::EndOfFile(_) => write!(f, "Unexpected end of file while parsing")?,

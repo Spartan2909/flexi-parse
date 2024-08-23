@@ -468,7 +468,7 @@ impl<D> hash::Hash for Group<D> {
 impl<D: Delimiters> Parse for Group<D> {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let (start, end, token_stream) = parse_delimiters::<D>(input)?;
-        let span = Span::across(start.span(), end.span());
+        let span = Span::across(start.span(), end.span()).unwrap();
         Ok(Group {
             token_stream,
             span,
