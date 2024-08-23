@@ -50,9 +50,10 @@ impl State {
     }
 
     fn define(&mut self, name: &Ident) {
-        if let Some(scope) = self.scopes.last_mut() {
-            scope.insert(name.string().to_owned(), true);
-        }
+        self.scopes
+            .last_mut()
+            .unwrap()
+            .insert(name.string().to_owned(), true);
     }
 
     fn resolve_local(&self, name: &Ident, distance: &Cell<Option<usize>>) {
@@ -72,11 +73,9 @@ impl State {
         }
     }
 
-    fn begin_scope(&mut self) {
-        self.scopes.push(HashMap::new());
-    }
-
-    fn end_scope(&mut self) {
+    fn with_scope(&mut self, f: impl FnOnce(&mut State)) {
+        self.scopes.push(HashMap::with_capacity(10));
+        f(self);
         self.scopes.pop();
     }
 }
@@ -174,15 +173,15 @@ impl Function {
     fn resolve(&self, state: &mut State, kind: FunctionType) {
         let enclosing = state.current_function;
         state.current_function = kind;
-        state.begin_scope();
-        for param in &self.params {
-            state.declare(param);
-            state.define(param);
-        }
-        for stmt in &self.body {
-            stmt.resolve(state);
-        }
-        state.end_scope();
+        state.with_scope(|state| {
+            for param in &self.params {
+                state.declare(param);
+                state.define(param);
+            }
+            for stmt in &self.body {
+                stmt.resolve(state);
+            }
+        });
         state.current_function = enclosing;
     }
 }
@@ -191,11 +190,11 @@ impl Stmt {
     fn resolve(&self, state: &mut State) {
         match self {
             Stmt::Block(stmts) => {
-                state.begin_scope();
-                for stmt in stmts {
-                    stmt.resolve(state);
-                }
-                state.end_scope();
+                state.with_scope(|state| {
+                    for stmt in stmts {
+                        stmt.resolve(state);
+                    }
+                });
             }
             Stmt::Class {
                 name,
@@ -209,48 +208,44 @@ impl Stmt {
                 state.declare(name);
                 state.define(name);
 
-                if let Some(superclass) = superclass {
-                    if name.string() == superclass.string() {
-                        state.error(new_error(
-                            "A class can't inherit from itself".to_string(),
-                            superclass,
-                            error_codes::CYCLICAL_INHERITANCE,
-                        ));
+                state.with_scope(|state| {
+                    if let Some(superclass) = superclass {
+                        if name.string() == superclass.string() {
+                            state.error(new_error(
+                                "A class can't inherit from itself".to_string(),
+                                superclass,
+                                error_codes::CYCLICAL_INHERITANCE,
+                            ));
+                        }
+
+                        state.current_class = ClassType::SubClass;
+
+                        state.resolve_local(superclass, superclass_distance);
+
+                        state
+                            .scopes
+                            .last_mut()
+                            .unwrap()
+                            .insert("super".to_string(), true);
                     }
 
-                    state.current_class = ClassType::SubClass;
+                    state.with_scope(|state| {
+                        state
+                            .scopes
+                            .last_mut()
+                            .unwrap()
+                            .insert("this".to_string(), true);
 
-                    state.resolve_local(superclass, superclass_distance);
-
-                    state.begin_scope();
-                    state
-                        .scopes
-                        .last_mut()
-                        .unwrap()
-                        .insert("super".to_string(), true);
-                }
-
-                state.begin_scope();
-                state
-                    .scopes
-                    .last_mut()
-                    .unwrap()
-                    .insert("this".to_string(), true);
-
-                for method in methods {
-                    let kind = if method.name.string() == "init" {
-                        FunctionType::Initialiser
-                    } else {
-                        FunctionType::Method
-                    };
-                    method.resolve(state, kind);
-                }
-
-                state.end_scope();
-
-                if superclass.is_some() {
-                    state.end_scope();
-                }
+                        for method in methods {
+                            let kind = if method.name.string() == "init" {
+                                FunctionType::Initialiser
+                            } else {
+                                FunctionType::Method
+                            };
+                            method.resolve(state, kind);
+                        }
+                    });
+                });
 
                 state.current_class = enclosing;
             }
