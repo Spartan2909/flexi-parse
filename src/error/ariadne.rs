@@ -7,6 +7,7 @@ use crate::SourceId;
 use crate::Span;
 use crate::SOURCE_CACHE;
 
+use std::fmt;
 use std::io;
 use std::io::Write;
 
@@ -48,15 +49,17 @@ impl From<&ErrorKind> for ReportKind<'static> {
 }
 
 impl ariadne::Cache<SourceId> for &SourceCache {
-    fn fetch(&mut self, id: &SourceId) -> Result<&Source, Box<dyn std::fmt::Debug + '_>> {
+    type Storage = String;
+
+    fn fetch(&mut self, id: &SourceId) -> Result<&Source, impl fmt::Debug> {
         self.sources
             .get(id)
             .ok_or_else(|| unreachable!())
             .map(|source| &source.ariadne_source)
     }
 
-    fn display<'a>(&self, id: &'a SourceId) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        Some(Box::new(self.sources.get(id)?.file.name().into_owned()))
+    fn display<'a>(&self, id: &'a SourceId) -> Option<impl std::fmt::Display + 'a> {
+        Some(self.sources.get(id)?.file.name().into_owned())
     }
 }
 
@@ -124,7 +127,7 @@ impl Report {
 impl From<&SingleError> for Report {
     fn from(value: &SingleError) -> Self {
         let mut builder =
-            ariadne::Report::build((&value.kind).into(), *value.source.id(), value.kind.start())
+            ariadne::Report::build((&value.kind).into(), value.kind.span(&value.source))
                 .with_code(value.kind.code());
         match &value.kind {
             ErrorKind::Silent => unreachable!("attempted to print silent error"),

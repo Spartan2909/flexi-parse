@@ -99,7 +99,7 @@ impl Source {
     fn new(source: Arc<SourceFile>) -> Source {
         Source {
             #[cfg(feature = "ariadne")]
-            ariadne_source: source.contents().into(),
+            ariadne_source: source.contents().to_string().into(),
             file: source,
         }
     }
@@ -182,7 +182,7 @@ impl SourceFile {
         }
     }
 
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> Cow<'_, str> {
         match &self.inner {
             SourceFileInner::Named { name, contents: _ } => Cow::Borrowed(name),
             SourceFileInner::Path { path, contents: _ } => path.to_string_lossy(),
@@ -440,7 +440,7 @@ pub struct TokenStream {
 }
 
 impl TokenStream {
-    fn new(tokens: Vec<Entry>, source: Option<Arc<SourceFile>>) -> TokenStream {
+    const fn new(tokens: Vec<Entry>, source: Option<Arc<SourceFile>>) -> TokenStream {
         TokenStream { tokens, source }
     }
 
@@ -482,7 +482,7 @@ impl TokenStream {
     }
 
     /// Returns true if there are no tokens in `self`.
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.tokens.len() == 0
     }
 
@@ -540,7 +540,7 @@ pub struct ParseBuffer<'a> {
 }
 
 impl<'a> ParseBuffer<'a> {
-    fn new(cursor: Cursor<'a>, source: Arc<SourceFile>) -> ParseBuffer<'a> {
+    const fn new(cursor: Cursor<'a>, source: Arc<SourceFile>) -> ParseBuffer<'a> {
         ParseBuffer {
             cursor,
             source,
@@ -559,7 +559,7 @@ impl<'a> ParseBuffer<'a> {
     }
 
     /// Returns true if this stream has been exhausted.
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.cursor.eof()
     }
 
@@ -602,10 +602,7 @@ impl<'a> ParseBuffer<'a> {
 
     fn try_parse<T: Parse>(&self) -> Result<T> {
         let offset = self.cursor.offset.get();
-        T::parse(self).map_err(move |err| {
-            self.cursor.offset.set(offset);
-            err
-        })
+        T::parse(self).inspect_err(move |_| self.cursor.offset.set(offset))
     }
 
     /// Parses `T1` and `T2`, with no whitespace allowed between them.
@@ -810,7 +807,7 @@ impl fmt::Debug for ParseBuffer<'_> {
     }
 }
 
-impl<'a> From<TokenStream> for ParseBuffer<'a> {
+impl From<TokenStream> for ParseBuffer<'_> {
     fn from(value: TokenStream) -> Self {
         let len = value.tokens.len();
         let cursor = Cursor {
@@ -844,7 +841,7 @@ impl<'a> From<&'a TokenStream> for ParseBuffer<'a> {
 /// Accepts a `ParseStream` followed by one or more types.
 #[macro_export]
 macro_rules! peek_any {
-    ( $input:expr, $( $ty:tt ),+ $(,)? ) => {
+    ( $input:expr_2021, $( $ty:tt ),+ $(,)? ) => {
         $( $input.peek($ty) || )+ false
     };
 }
@@ -854,7 +851,7 @@ macro_rules! peek_any {
 /// Accepts a `ParseStream` followed by one or more types.
 #[macro_export]
 macro_rules! peek2_any {
-    ( $input:expr, $( $ty:tt ),+ $(,)? ) => {
+    ( $input:expr_2021, $( $ty:tt ),+ $(,)? ) => {
         $( $input.peek2($ty) || )+ false
     };
 }
@@ -870,7 +867,7 @@ struct Cursor<'a> {
 }
 
 impl<'a> Cursor<'a> {
-    fn bump(&self) -> Option<usize> {
+    const fn bump(&self) -> Option<usize> {
         let offset = self.offset.get();
         if self.eof() {
             None
@@ -883,7 +880,7 @@ impl<'a> Cursor<'a> {
         &self.stream[self.offset.get()]
     }
 
-    pub fn eof(&self) -> bool {
+    pub const fn eof(&self) -> bool {
         self.offset.get() == self.len
     }
 
@@ -906,7 +903,7 @@ impl<'a> Cursor<'a> {
     }
 }
 
-impl<'a> Clone for Cursor<'a> {
+impl Clone for Cursor<'_> {
     fn clone(&self) -> Self {
         Cursor {
             stream: self.stream.clone(),

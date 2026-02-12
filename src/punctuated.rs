@@ -147,7 +147,7 @@ impl<T, P: Punct> Punctuated<T, P> {
     }
 
     /// Returns an iterator over the values in this struct.
-    pub fn iter(&self) -> Iter<T, P> {
+    pub fn iter(&self) -> Iter<'_, T, P> {
         Iter {
             main: self.pairs.iter(),
             end: self.end.as_ref(),
@@ -155,7 +155,7 @@ impl<T, P: Punct> Punctuated<T, P> {
     }
 
     /// Returns an iterator that allows modifying each value.
-    pub fn iter_mut(&mut self) -> IterMut<T, P> {
+    pub fn iter_mut(&mut self) -> IterMut<'_, T, P> {
         IterMut {
             main: self.pairs.iter_mut(),
             end: self.end.as_mut(),
@@ -163,7 +163,7 @@ impl<T, P: Punct> Punctuated<T, P> {
     }
 
     /// Returns an iterator over the pairs of values and punctuation in this struct.
-    pub fn pairs(&self) -> Pairs<T, P> {
+    pub fn pairs(&self) -> Pairs<'_, T, P> {
         Pairs {
             main: self.pairs.iter(),
             end: self.end.as_ref(),
@@ -171,7 +171,7 @@ impl<T, P: Punct> Punctuated<T, P> {
     }
 
     /// Returns an iterator that allows modifying each pair.
-    pub fn pairs_mut(&mut self) -> PairsMut<T, P> {
+    pub fn pairs_mut(&mut self) -> PairsMut<'_, T, P> {
         PairsMut {
             main: self.pairs.iter_mut(),
             end: self.end.as_mut(),
@@ -238,7 +238,7 @@ impl<'a, T, P> Iterator for Iter<'a, T, P> {
     }
 }
 
-impl<'a, T, P> DoubleEndedIterator for Iter<'a, T, P> {
+impl<T, P> DoubleEndedIterator for Iter<'_, T, P> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if let Some(next) = self.end.take() {
             return Some(next);
@@ -247,7 +247,7 @@ impl<'a, T, P> DoubleEndedIterator for Iter<'a, T, P> {
     }
 }
 
-impl<'a, T, P> ExactSizeIterator for Iter<'a, T, P> {
+impl<T, P> ExactSizeIterator for Iter<'_, T, P> {
     fn len(&self) -> usize {
         self.main.len() + usize::from(self.end.is_some())
     }
@@ -274,7 +274,7 @@ impl<'a, T, P> Iterator for IterMut<'a, T, P> {
     }
 }
 
-impl<'a, T, P> DoubleEndedIterator for IterMut<'a, T, P> {
+impl<T, P> DoubleEndedIterator for IterMut<'_, T, P> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if let Some(next) = self.end.take() {
             return Some(next);
@@ -283,7 +283,7 @@ impl<'a, T, P> DoubleEndedIterator for IterMut<'a, T, P> {
     }
 }
 
-impl<'a, T, P> ExactSizeIterator for IterMut<'a, T, P> {
+impl<T, P> ExactSizeIterator for IterMut<'_, T, P> {
     fn len(&self) -> usize {
         self.main.len() + usize::from(self.end.is_some())
     }
@@ -364,7 +364,7 @@ impl<'a, T, P> Iterator for Pairs<'a, T, P> {
     }
 }
 
-impl<'a, T, P> DoubleEndedIterator for Pairs<'a, T, P> {
+impl<T, P> DoubleEndedIterator for Pairs<'_, T, P> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if let Some(value) = self.end.take() {
             return Some(Pair::End(value));
@@ -375,7 +375,7 @@ impl<'a, T, P> DoubleEndedIterator for Pairs<'a, T, P> {
     }
 }
 
-impl<'a, T, P> ExactSizeIterator for Pairs<'a, T, P> {
+impl<T, P> ExactSizeIterator for Pairs<'_, T, P> {
     fn len(&self) -> usize {
         self.main.len() + usize::from(self.end.is_some())
     }
@@ -402,7 +402,7 @@ impl<'a, T, P> Iterator for PairsMut<'a, T, P> {
     }
 }
 
-impl<'a, T, P> DoubleEndedIterator for PairsMut<'a, T, P> {
+impl<T, P> DoubleEndedIterator for PairsMut<'_, T, P> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if let Some(value) = self.end.take() {
             return Some(Pair::End(value));
@@ -413,7 +413,7 @@ impl<'a, T, P> DoubleEndedIterator for PairsMut<'a, T, P> {
     }
 }
 
-impl<'a, T, P> ExactSizeIterator for PairsMut<'a, T, P> {
+impl<T, P> ExactSizeIterator for PairsMut<'_, T, P> {
     fn len(&self) -> usize {
         self.main.len() + usize::from(self.end.is_some())
     }

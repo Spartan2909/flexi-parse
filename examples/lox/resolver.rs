@@ -1,16 +1,16 @@
-use super::error_codes;
 use super::Ast;
 use super::Expr;
 use super::Function;
 use super::Stmt;
+use super::error_codes;
 
 use std::cell::Cell;
 use std::collections::HashMap;
 
+use flexi_parse::Result;
 use flexi_parse::error::Error;
 use flexi_parse::new_error;
 use flexi_parse::token::Ident;
-use flexi_parse::Result;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FunctionType {
@@ -154,14 +154,14 @@ impl Expr {
             }
             Expr::Unary(unary) => unary.right().resolve(state),
             Expr::Variable { name, distance } => {
-                if let Some(scope) = state.scopes.last() {
-                    if scope.get(name.string()) == Some(&false) {
-                        state.error(new_error(
-                            "Can't read a variable in its own intialiser".to_string(),
-                            name,
-                            error_codes::INVALID_INITIALISER,
-                        ));
-                    }
+                if let Some(scope) = state.scopes.last()
+                    && scope.get(name.string()) == Some(&false)
+                {
+                    state.error(new_error(
+                        "Can't read a variable in its own intialiser".to_string(),
+                        name,
+                        error_codes::INVALID_INITIALISER,
+                    ));
                 }
                 state.resolve_local(name, distance);
             }

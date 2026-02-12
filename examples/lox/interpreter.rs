@@ -85,11 +85,17 @@ impl From<Option<cmp::Ordering>> for Ordering {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Eq)]
 struct NativeFunction {
     function: fn(Vec<Value>) -> Result<Value>,
     arity: usize,
     name: &'static str,
+}
+
+impl PartialEq for NativeFunction {
+    fn eq(&self, other: &Self) -> bool {
+        self.arity == other.arity && self.name == other.name
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -203,7 +209,7 @@ impl Instance {
     }
 
     fn set(&mut self, name: &Ident, value: Value) {
-        self.fields.insert(name.string().to_string(), value);
+        self.fields.insert(name.string().clone(), value);
     }
 }
 
@@ -663,15 +669,15 @@ impl Expr {
                 callee.call(evaluated_args, paren)
             }
             Expr::Get { object, name } => {
-                if let Value::Instance(instance) = object.evaluate(state)? {
+                match object.evaluate(state)? { Value::Instance(instance) => {
                     get(instance, name)
-                } else {
+                } _ => {
                     Err(new_error(
                         "Only instances have properties".to_string(),
                         name,
                         error_codes::TYPE_ERROR,
                     ))
-                }
+                }}
             }
             Expr::Group(expr) => expr.evaluate(state),
             Expr::Literal(literal) => Ok(literal.evaluate()),
@@ -681,17 +687,17 @@ impl Expr {
                 name,
                 value,
             } => {
-                if let Value::Instance(instance) = object.evaluate(state)? {
+                match object.evaluate(state)? { Value::Instance(instance) => {
                     let value = value.evaluate(state)?;
                     instance.borrow_mut().set(name, value.clone());
                     Ok(value)
-                } else {
+                } _ => {
                     Err(new_error(
                         "Only instances have fields".to_string(),
                         name,
                         error_codes::TYPE_ERROR,
                     ))
-                }
+                }}
             }
             Expr::Super {
                 keyword,
@@ -738,7 +744,7 @@ impl Expr {
 }
 
 macro_rules! propagate_return {
-    ( $expr:expr ) => {
+    ( $expr:expr_2021 ) => {
         if let Some(_tmp) = $expr {
             return Ok(Some(_tmp));
         }

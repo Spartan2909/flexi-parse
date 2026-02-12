@@ -59,17 +59,17 @@ impl ErrorKind {
         }
     }
 
-    fn start(&self) -> usize {
+    fn span(&self, source: &Arc<SourceFile>) -> Span {
         match self {
-            ErrorKind::Silent => panic!("called `start` on `ErrorKind::Silent`"),
+            ErrorKind::Silent => panic!("called `span` on `ErrorKind::Silent`"),
             ErrorKind::Custom { span, .. }
             | ErrorKind::UnknownCharacter(span)
             | ErrorKind::UnterminatedGroup { span, .. }
             | ErrorKind::UnterminatedChar(span)
             | ErrorKind::LongChar(span)
             | ErrorKind::UnterminatedString(span)
-            | ErrorKind::UnexpectedToken { span, .. } => span.start(),
-            ErrorKind::EndOfFile(n) => *n,
+            | ErrorKind::UnexpectedToken { span, .. } => span.clone(),
+            &ErrorKind::EndOfFile(n) => Span::new(n as u32, n as u32, Arc::clone(source)),
         }
     }
 }
@@ -124,7 +124,7 @@ impl Error {
         Error { errors: vec![] }
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub(crate) const fn is_empty(&self) -> bool {
         self.errors.is_empty()
     }
 

@@ -383,13 +383,10 @@ pub(crate) fn parse_delimiters<D: Delimiters>(
                 if open == 0 {
                     break;
                 }
-                tokens.push(input.next()?.clone());
             } else if D::Start::peek(input) {
                 open += 1;
-                tokens.push(input.next()?.clone());
-            } else {
-                tokens.push(input.next()?.clone());
             }
+            tokens.push(input.next()?.clone());
         }
     } else {
         while !D::End::peek(input) {
@@ -538,7 +535,7 @@ impl<D: Delimiters> Parse for Group<D> {
 /// ```
 #[macro_export]
 macro_rules! group {
-    ($tokens:ident in $input:expr) => {{
+    ($tokens:ident in $input:expr_2021) => {{
         let _tmp: $crate::group::Group<_> = $input.parse()?;
         let _delims = _tmp.delimiters();
         $tokens = $crate::ParseBuffer::from(_tmp.into_token_stream());

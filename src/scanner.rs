@@ -20,7 +20,7 @@ use crate::TokenStream;
 use std::sync::Arc;
 
 fn valid_ident_char(c: Option<char>) -> bool {
-    c.map_or(false, |c| c.is_alphanumeric() || c == '_')
+    c.is_some_and(|c| c.is_alphanumeric() || c == '_')
 }
 
 #[derive(Debug)]
